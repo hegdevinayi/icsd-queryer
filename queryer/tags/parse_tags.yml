@@ -1,0 +1,71 @@
+# Summary
+'PDF-numbers'
+'Remark'
+'Author'
+'Title of Article'
+'Reference'
+Export CIF File - MyBaseFileName
+
+# Visualization
+Export as table
+
+# Chemistry
+'Sum Form'
+'Struct.Form.'
+'Mineral Name'
+'Mineral Group'
+'AB Formula Chem.Comp.'
+
+# Published Crystal Structure Data
+'Cell Parameters'
+'Volume'
+'Space Group'
+'Crystal System'
+'Wyckoff Sequence'
+'Formula Units per Cell'
+'Pearson Symbol'
+'Crystal Class'
+'Structure Type'
+'Calc. Dens.'
+'Meas. Dens.'
+'Laue Class'
+
+# Bibliography
+'1st Reference'
+'2nd Reference'
+'3rd Reference'
+
+# Experimental Information
+## External Conditions
+'Temperature'
+'Pressure'
+## Radiation Type
+'X-ray'
+'Electrons'
+'Neutrons'
+'Synchrotron'
+## Sample Type
+'Powder'
+'Single Crystal'
+'R-Value'
+## Additional Information
+'Twinned Crystal Data'
+'Rietveld Refinement employed'
+'Absolute Configuration Determined'
+'Theoretically calculated structures'
+'Magnetic Structure Available'
+'Anharmonic temperature factors given'
+'NMR Data available'
+'Correction of Earlier Work'
+## Properties of Structure
+'Polytype Structure'
+'Order/Disorder Structure'
+'Disordered Structure'
+'Defect Structure'
+'Misfit Layer Structure'
+'Mineral'
+'Structure Prototype'
+
+# Warnings & Comments
+## Warnings
+## Comments

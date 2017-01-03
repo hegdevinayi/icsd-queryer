@@ -1,0 +1,3 @@
+composition: "content_form:uiChemistrySearchSumForm:input"
+number_of_elements: "content_form:uiChemistrySearchElCount:input:input"
+icsd_collection_code: "content_form:uiCodeCollection:input:input"
