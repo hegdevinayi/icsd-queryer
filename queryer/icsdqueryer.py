@@ -2,6 +2,7 @@ import sys
 import os
 import json
 from selenium import webdriver
+from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
 class Error(Exception):
     pass
@@ -35,11 +36,12 @@ class Queryer:
             query:
                 the query to be posted to the webform -- a dictionary of field
                 names as keys and what to fill in them as the corresponding
-                values, e.g., {'composition': 'Ni:2:2 Ti:1:1',
-                'number_of_elements': 2} [Note]: the field names must exactly
-                match the ones on the web page, but in lower case, spaces
-                replaced by underscores. In the above example, the field name
-                visible on the form is "Number of Elements".
+                values. Currently supported field names:
+                1. composition
+                2. number_of_elements
+                3. icsd_collection_code
+                E.g., {'composition': 'Ni:2:2 Ti:1:1', 'number_of_elements': 2}
+                [Note]: the field names must exactly match the ones listed above
         """
         self.url = url
         self.query = query
@@ -64,7 +66,8 @@ class Queryer:
             raise Error(error_message)
 
         for k, v in self.query.items():
-            self.driver.find_element_by_id(v[0]).send_keys(v[1])
+            element_id = ICSD_QUERY_TAGS[k]
+            self.driver.find_element_by_id(element_id).send_keys(v)
 
         self._run_query()
         self._check_list_view()
@@ -117,16 +120,261 @@ class Queryer:
                 break
         return collection_code
 
+    # panel: "Summary"
+    def get_PDF_number(self):
+        pdf_number = ""
+        tag = ICSD_PARSE_TAGS['PDF_number']
+        xpath = "//*[text()[contains(., '{}')]]/../td/div".format(tag)
+        nodes = self.driver.find_elements_by_xpath(xpath)
+        if nodes[0].text != 'R-value':
+            pdf_number = nodes[0].text.split('\n')[0]
+        return pdf_number
+
+    def get_authors(self):
+        authors = ""
+        tag = ICSD_PARSE_TAGS['authors']
+        xpath = "//*[text()[contains(., '{}')]]/../td".format(tag)
+        nodes = self.driver.find_elements_by_xpath(xpath)
+        authors = nodes[1].text.strip().replace('\n', ' ')
+        return authors
+
+    def get_publication_title(self):
+        element = self.driver.find_element_by_id('textfield13')
+        return element.text.strip().replace('\n', ' ')
+
+    def get_reference(self):
+        element = self.driver.find_element_by_id('textfield12')
+        return element.text.strip().replace('\n', ' ')
+
+    # panel: "Chemistry"
+    def get_chemical_formula(self):
+        element = self.driver.find_element_by_id('textfieldChem1')
+        return element.get_attribute('value').strip()
+
+    def get_structural_formula(self):
+        element = self.driver.find_element_by_id('textfieldChem3')
+        return element.text.strip()
+
+    def get_AB_formula(self):
+        element = self.driver.find_element_by_id('textfieldChem6')
+        return element.get_attribute('value').strip()
+
+    # panel: "Published Crystal Structure Data"
+    def get_cell_parameters(self):
+        element = self.driver.find_element_by_id('textfieldPub1')
+        raw_text = element.get_attribute('value').strip()
+        a, b, c, alpha, beta, gamma = [ float(e.split('(')[0]) for e in
+                                       raw_text.split() ]
+        cell_parameters = {'a': a, 'b': b, 'c': c, 'alpha': alpha, 'beta': beta,
+                           'gamma': gamma}
+        return cell_parameters
+
+    def get_volume(self):
+        element = self.driver.find_element_by_id('textfieldPub2')
+        return float(element.get_attribute('value').strip())
+
+    def get_space_group(self):
+        element = self.driver.find_element_by_id('textfieldPub5')
+        return element.get_attribute('value').strip()
+
+    def get_crystal_system(self):
+        element = self.driver.find_element_by_id('textfieldPub8')
+        return element.get_attribute('value').strip()
+
+    def get_wyckoff_sequence(self):
+        element = self.driver.find_element_by_id('textfieldPub11')
+        return element.get_attribute('value').strip()
+
+    def get_formula_units_per_cell(self):
+        element = self.driver.find_element_by_id('textfieldPub3')
+        return int(element.get_attribute('value').strip())
+
+    def get_pearson(self):
+        element = self.driver.find_element_by_id('textfieldPub6')
+        return element.get_attribute('value').strip()
+
+    def get_crystal_class(self):
+        element = self.driver.find_element_by_id('textfieldPub9')
+        return element.get_attribute('value').strip()
+
+    def get_structural_prototype(self):
+        element = self.driver.find_element_by_id('textfieldPub12')
+        return element.get_attribute('value').strip()
+
+    # panel: "Bibliography"
+    def _get_references(self, n):
+        tag = 'Reference'
+        xpath = "//*[text()[contains(., '{}')]]/../td/div".format(tag)
+        nodes = self.driver.find_elements_by_xpath(xpath)
+        reference = self._clean_reference_string(nodes[n].text)
+        return reference
+
+    def get_reference_1(self):
+        return self._get_references(0)
+
+    def get_reference_2(self):
+        return self._get_references(1)
+
+    def get_reference_3(self):
+        return self._get_references(2)
+
+    def _clean_reference_string(self, r):
+        r = r.strip()
+        r = r.replace('Northwestern University Library', '').strip()
+        r = r.replace('\n', ' ')
+        return r
+
+    # panel: "Warnings & Comments"
+    def get_warnings(self):
+        warnings = []
+        block_element = self.driver.find_element_by_id('ir_a_8_81a3e')
+        warning_nodes = block_element.find_elements_by_xpath(".//table/tbody/tr")
+        for node in warning_nodes:
+            if node.text:
+                warnings.append(node.text.strip().replace('\n', ' '))
+        return warnings
+
+    def get_comments(self):
+        comments = []
+        block_element = self.driver.find_element_by_id('ir_a_8_81a3e')
+        tag = ICSD_PARSE_TAGS['comments']
+        xpath = ".//*[text()[contains(., '{}')]]/../../div/div/div".format(tag)
+        comment_nodes = block_element.find_elements_by_xpath(xpath)
+        for node in comment_nodes:
+            if node.text:
+                comments.append(node.text.strip().replace('\n', ' '))
+        return comments
+
+    # panel: "Experimental Conditions"
+    # text fields
+    def get_temperature(self):
+        temperature = ""
+        tag = ICSD_PARSE_TAGS['temperature']
+        xpath = "//*[text()[contains(., '{}')]]/../../td/input".format(tag)
+        nodes = self.driver.find_elements_by_xpath(xpath)
+        temperature = nodes[0].get_attribute('value').strip()
+        return temperature
+
+    def get_pressure(self):
+        pressure = ""
+        tag = ICSD_PARSE_TAGS['pressure']
+        xpath = "//*[text()[contains(., '{}')]]/../../td/input".format(tag)
+        nodes = self.driver.find_elements_by_xpath(xpath)
+        pressure = nodes[1].get_attribute('value').strip()
+        return pressure
+
+    def get_R_value(self):
+        R_value = ""
+        tag = ICSD_PARSE_TAGS['R_value']
+        xpath = "//*[text()[contains(., '{}')]]".format(tag)
+        xpath += "/../td/input[@type='text']"
+        node = self.driver.find_element_by_xpath(xpath)
+        R_value = node.get_attribute('value').strip()
+        if R_value:
+            R_value = float(R_value)
+        return R_value
+
+    # checkboxes
+    def _is_checkbox_enabled(self, tag_key):
+        tag = ICSD_PARSE_TAGS[tag_key]
+        xpath = "//*[text()[contains(., '{}')]]".format(tag)
+        xpath += "/../input[@type='checkbox']"
+        node = self.driver.find_element_by_xpath(xpath)
+        if node.get_attribute('checked') is None:
+            return False
+        else:
+            return True
+
+    def is_x_ray(self):
+        return self._is_checkbox_enabled('x_ray')
+
+    def is_electron_diffraction(self):
+        return self._is_checkbox_enabled('electron_diffraction')
+
+    def is_neutron_diffraction(self):
+        return self._is_checkbox_enabled('neutron_diffraction')
+
+    def is_synchrotron(self):
+        return self._is_checkbox_enabled('synchrotron')
+
+    def is_powder(self):
+        return self._is_checkbox_enabled('powder')
+
+    def is_single_crystal(self):
+        return self._is_checkbox_enabled('single_crystal')
+
+    def is_twinned_crystal_data(self):
+        return self._is_checkbox_enabled('twinned_crystal_data')
+
+    def is_rietveld_employed(self):
+        return self._is_checkbox_enabled('rietveld_employed')
+
+    def is_absolute_config_determined(self):
+        return self._is_checkbox_enabled('absolute_config_determined')
+
+    def is_theoretical_calculation(self):
+        return self._is_checkbox_enabled('theoretical_calculation')
+
+    def is_magnetic_structure_available(self):
+        return self._is_checkbox_enabled('magnetic_structure_available')
+
+    def is_anharmonic_temperature_factors_given(self):
+        return self._is_checkbox_enabled('anharmonic_temperature_factors_given')
+
+    def is_NMR_data_available(self):
+        return self._is_checkbox_enabled('NMR_data_available')
+
+    def is_correction_of_previous(self):
+        return self._is_checkbox_enabled('correction_of_previous')
+
+    def is_polytype(self):
+        return self._is_checkbox_enabled('polytype')
+
+    def is_order_disorder(self):
+        return self._is_checkbox_enabled('order_disorder')
+
+    def is_disordered(self):
+        return self._is_checkbox_enabled('disordered')
+
+    def is_defect(self):
+        return self._is_checkbox_enabled('defect')
+
+    def is_misfit_layer(self):
+        return self._is_checkbox_enabled('misfit_layer')
+
+    def is_mineral(self):
+        return self._is_checkbox_enabled('mineral')
+
+    def is_is_prototype_structure(self):
+        return self._is_checkbox_enabled('is_prototype_structure')
+
+
     def parse_data(self):
         """
         get all the information for the entry
         """
         json = {}
-        json['coll_code'] = self.get_collection_code()
-        print json['coll_code']
-        labels = self.driver.find_elements_by_class_name('label')
-        for l in labels:
-            print l.text
+        json['collection_code'] = self.get_collection_code()
+        for tag in ICSD_PARSE_TAGS.keys():
+            # assume text field
+            method = 'get_{}'.format(tag)
+            try:
+                json[tag] = getattr(self, method)()
+            except AttributeError:
+                pass
+            else:
+                continue
+
+            # assume checkbox
+            method = 'is_{}'.format(tag)
+            try:
+                json[tag] = getattr(self, method)()
+            except AttributeError:
+                ##sys.stdout.write('"{}" parser not implemented!\n'.format(tag))
+                continue
+
+        for tag in json.keys():
+            sys.stdout.write('{}: {}\n'.format(tag, json[tag]))
 
     def export_cif_file(self, base_filename='ICSD_Coll_Code'):
         self.driver.find_element_by_id('fileNameForExportToCif').send_keys(base_filename)
@@ -146,4 +394,5 @@ class Queryer:
         self.driver.set_window_size(size[0], size[1])
         self.driver.save_screenshot(fname)
 
-
+    def quit(self):
+        self.driver.quit()

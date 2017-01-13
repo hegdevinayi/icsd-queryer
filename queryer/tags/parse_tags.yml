@@ -1,71 +1,54 @@
-# Summary
-'PDF-numbers'
-'Remark'
-'Author'
-'Title of Article'
-'Reference'
-Export CIF File - MyBaseFileName
-
-# Visualization
-Export as table
-
-# Chemistry
-'Sum Form'
-'Struct.Form.'
-'Mineral Name'
-'Mineral Group'
-'AB Formula Chem.Comp.'
-
-# Published Crystal Structure Data
-'Cell Parameters'
-'Volume'
-'Space Group'
-'Crystal System'
-'Wyckoff Sequence'
-'Formula Units per Cell'
-'Pearson Symbol'
-'Crystal Class'
-'Structure Type'
-'Calc. Dens.'
-'Meas. Dens.'
-'Laue Class'
-
-# Bibliography
-'1st Reference'
-'2nd Reference'
-'3rd Reference'
-
-# Experimental Information
-## External Conditions
-'Temperature'
-'Pressure'
-## Radiation Type
-'X-ray'
-'Electrons'
-'Neutrons'
-'Synchrotron'
-## Sample Type
-'Powder'
-'Single Crystal'
-'R-Value'
-## Additional Information
-'Twinned Crystal Data'
-'Rietveld Refinement employed'
-'Absolute Configuration Determined'
-'Theoretically calculated structures'
-'Magnetic Structure Available'
-'Anharmonic temperature factors given'
-'NMR Data available'
-'Correction of Earlier Work'
-## Properties of Structure
-'Polytype Structure'
-'Order/Disorder Structure'
-'Disordered Structure'
-'Defect Structure'
-'Misfit Layer Structure'
-'Mineral'
-'Structure Prototype'
-
-# Warnings & Comments
-## Warnings
-## Comments
+#summary:
+        PDF_number: "PDF-numbers"
+        authors: "Author"
+        publication_title: "Title of Article"
+        reference: "Reference"
+#chemistry:
+        chemical_formula: "Sum Form"
+        structural_formula: "Struct.Form."
+        AB_formula: "AB Formula"
+#crystal_structure:
+        cell_parameters: "Cell Parameters"
+        volume: "Volume"
+        space_group: "Space Group"
+        crystal_system: "Crystal System"
+        wyckoff_sequence: "Wyckoff Sequence"
+        formula_units_per_cell: "Formula Units per Cell"
+        pearson: "Pearson Symbol"
+        crystal_class: "Crystal Class"
+        structural_prototype: "Structure Type"
+#bibliography:
+        reference_1: "1st Reference"
+        reference_2: "2nd Reference"
+        reference_3: "3rd Reference"
+#external_conditions:
+        temperature: "Temperature"
+        pressure: "Pressure"
+        R_value: "R-Value"
+#warnings:
+        warnings: "Warnings"
+        comments: "Comments"
+#radiation_type:
+        x_ray: "X-ray"
+        electron_diffraction: "Electrons"
+        neutron_diffraction: "Neutrons"
+        synchrotron: "Synchrotron"
+#sample_type:
+        powder: "Powder"
+        single_crystal: "Single Crystal"
+#metadata:
+        twinned_crystal_data: "Twinned Crystal Data"
+        rietveld_employed: "Rietveld Refinement employed"
+        absolute_config_determined: "Absolute Configuration Determined"
+        theoretical_calculation: "Theoretically calculated structures"
+        magnetic_structure_available: "Magnetic Structure Available"
+        anharmonic_temperature_factors_given: "Anharmonic temperature factors given"
+        NMR_data_available: "NMR Data available"
+        correction_of_previous: "Correction of Earlier Work"
+        polytype: "Polytype Structure"
+        order_disorder: "Order/Disorder Structure"
+        disordered: "Disordered Structure"
+        defect: "Defect Structure"
+        misfit_layer: "Misfit Layer Structure"
+        mineral: "Mineral"
+        is_prototype_structure: "Structure Prototype"
