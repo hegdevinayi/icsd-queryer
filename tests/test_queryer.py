@@ -1,4 +1,4 @@
-from queryer import icsdqueryer
+import queryer
 
 url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
 query = {
@@ -6,7 +6,7 @@ query = {
     'number_of_elements': '2'
     }
 ##query = {'icsd_collection_code': 181801}
-queryer = icsdqueryer.Queryer(query=query)
+queryer = queryer.Queryer(query=query)
 queryer.perform_icsd_query()
 ##print queryer.hits
 ##queryer.quit()
