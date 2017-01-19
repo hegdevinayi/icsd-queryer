@@ -13,17 +13,6 @@ class Queryer:
     """
     Base class to query the ICSD via the web interface using a Selenium
     WebDriver (http://selenium-python.readthedocs.io/).
-
-    Methods:
-        perform_icsd_query
-            post_query_to_form
-            parse_entries
-                get_collection_code
-                parse_entry
-                get_[ICSD tag]
-                is_[ICSD tag]
-            export_CIF
-            save_screenshot
     """
 
     _url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
@@ -195,10 +184,10 @@ class Queryer:
 
         If the number of entries loaded is equal to `self.hits`, raise Error.
         Loop through all the entries loaded, and for each entry:
-            (a) create a directory named after its ICSD Collection Code
-            (b) write "meta_data.json" into the directory
-            (c) save "screenshot.png" into the directory
-            (d) export the CIF into the directory
+            a. create a directory named after its ICSD Collection Code
+            b. write "meta_data.json" into the directory
+            c. save "screenshot.png" into the directory
+            d. export the CIF into the directory
         Close the browser session and quit.
         """
         if self._get_number_of_entries_loaded() != self.hits:
