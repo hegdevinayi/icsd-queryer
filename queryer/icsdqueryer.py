@@ -55,15 +55,28 @@ class Queryer:
         """
         self.url = url
         self.query = query
+        sys.stdout.write('Initializing a WebDriver...\n')
+        sys.stdout.flush()
         self.driver = self._initialize_driver()
+        sys.stdout.write('done.\n')
+        sys.stdout.flush()
+        sys.stdout.write('Loading {}... '.format(self.url))
+        sys.stdout.flush()
         self.driver.get(self.url)
+        sys.stdout.write('done.\n')
         self._check_basic_search()
         self.hits = 0
 
     def _initialize_driver(self):
         browser_data_dir = os.path.join(os.getcwd(), 'browser_data')
+        if os.path.exists(browser_data_dir):
+            shutil.rmtree(browser_data_dir)
         self.download_dir = os.path.abspath(os.path.join(browser_data_dir,
                                                          'driver_downloads'))
+        sys.stdout.write('Starting a ChromeDriver ')
+        sys.stdout.write('with the default download directory\n')
+        sys.stdout.write('"{}"\n'.format(self.download_dir))
+        sys.stdout.write('... ')
         _options = webdriver.ChromeOptions()
         _options.add_argument('user-data-dir={}'.format(browser_data_dir))
         prefs = {'download.default_directory': self.download_dir}
@@ -92,9 +105,12 @@ class Queryer:
             error_message = 'Empty query'
             raise Error(error_message)
 
+        sys.stdout.write('Querying the ICSD for\n')
         for k, v in self.query.items():
             element_id = ICSD_QUERY_TAGS[k]
             self.driver.find_element_by_id(element_id).send_keys(v)
+            sys.stdout.write('\t{} = "{}"\n'.format(k, v))
+            sys.stdout.flush()
 
         self._run_query()
         self._check_list_view()
@@ -116,7 +132,14 @@ class Queryer:
         if 'List View' not in title.text:
             error_message = 'Failed to load "List View" of results'
             raise Error(error_message)
-        self.hits = int(title.text.split()[-1])
+        try:
+            self.hits = int(title.text.split()[-1])
+        except TypeError:
+            error_message= 'No hits/too many hits. Modify your query.'
+            raise Error(error_message)
+        else:
+            sys.stdout.write('The query yielded {} hits.\n'.format(self.hits))
+            sys.stdout.flush()
 
     def _click_select_all(self):
         """
@@ -164,15 +187,23 @@ class Queryer:
 
     def parse_entries(self):
         """
-        Loop through all the entries loaded, and parse each one.
+        Parse all entries resulting from the query.
 
         If the number of entries loaded is equal to `self.hits`, raise Error.
+        Loop through all the entries loaded, and for each entry:
+            (a) create a directory named after its ICSD Collection Code
+            (b) write "meta_data.json" into the directory
+            (c) save "screenshot.png" into the directory
+            (d) export the CIF into the directory
+        Close the browser session and quit.
         """
         if self._get_number_of_entries_loaded() != self.hits:
             error_message = '# Hits != # Entries in Detailed View'
             raise Error(error_message)
 
-        for entry in range(self.hits):
+        sys.stdout.write('Parsing all the entries... \n')
+        sys.stdout.flush()
+        for i in range(self.hits):
             # get entry data
             entry_data = self.parse_entry()
 
@@ -207,10 +238,18 @@ class Queryer:
             CIF_dest_loc = os.path.join(coll_code, '{}.cif'.format(coll_code))
             shutil.move(CIF_source_loc, CIF_dest_loc)
 
+            sys.stdout.write('[{}/{}]: '.format(i+1, self.hits))
+            sys.stdout.write('Data exported into ')
+            sys.stdout.write('folder "{}"\n'.format(coll_code))
+            sys.stdout.flush()
+
             if self.hits != 1:
                 self._go_to_next_entry()
 
+        sys.stdout.write('Closing the browser session and exiting...')
+        sys.stdout.flush()
         self.quit()
+        sys.stdout.write(' done.\n')
 
     def _go_to_next_entry(self):
         """
@@ -228,6 +267,8 @@ class Queryer:
         `get_[tag]` or `is_[tag]` depending on whether the value to be parsed is
         a text field or checkbox, respectively, and raise an Error if the
         corresponding method is not found.
+
+        Return: (dict) `parsed_data` with [tag]:[parsed value]
         """
         parsed_data = {}
         parsed_data['collection_code'] = self.get_collection_code()
@@ -739,7 +780,6 @@ class Queryer:
         """
         return self._is_checkbox_enabled('is_prototype_structure')
 
-
     def export_CIF(self, base_filename='ICSD_Coll_Code'):
         """
         Use By.ID to locate text field for base filename for CIFs
@@ -776,3 +816,12 @@ class Queryer:
     def quit(self):
         self.driver.stop_client()
         self.driver.quit()
+
+    def perform_icsd_query(self):
+        """
+        Post the query to form, parse data for all the entries. (wrapper)
+        """
+        self.post_query_to_form()
+        self._click_select_all()
+        self._click_show_detailed_view()
+        self.parse_entries()

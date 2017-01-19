@@ -2,16 +2,12 @@ from queryer import icsdqueryer
 
 url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
 query = {
-    'composition': 'TME F',
+    'composition': 'TME:8:8 NG:3:3',
     'number_of_elements': '2'
     }
-##query = {'icsd_collection_code': 105420}
+##query = {'icsd_collection_code': 181801}
 queryer = icsdqueryer.Queryer(query=query)
-queryer.post_query_to_form()
-print queryer.hits
-queryer.quit()
-##queryer._click_select_all()
-##queryer._click_show_detailed_view()
-##queryer.export_CIF()
-##queryer.parse_entries()
+queryer.perform_icsd_query()
+##print queryer.hits
+##queryer.quit()
 
