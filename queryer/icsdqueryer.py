@@ -15,10 +15,14 @@ class Queryer:
     WebDriver (http://selenium-python.readthedocs.io/).
 
     Methods:
-        post_query_to_form
-        parse_data
-            save_CIF
-            get_metadata
+        perform_icsd_query
+            post_query_to_form
+            parse_entries
+                get_collection_code
+                parse_entry
+                get_[ICSD tag]
+                is_[ICSD tag]
+            export_CIF
             save_screenshot
     """
 
