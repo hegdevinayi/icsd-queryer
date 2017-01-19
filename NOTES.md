@@ -8,13 +8,13 @@ In either 'Basic Search and Retrieve' or 'Chemistry Search' mode:
 |- README.md
 |- requirements.txt
 |- NOTES.md
+|- queryer.py
+|- tags
+    |-- query_tags.yml
+    |-- parse_tags.yml
 |- docs
     |-- index.rst
     |-- [other doc files]
-|- queryer
-    |-- icsdqueryer.py
-    |-- [other src files]
 |- tests
     |-- test_queryer.py
     |-- [other test files]
-|- setup.py
