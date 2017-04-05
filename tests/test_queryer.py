@@ -1,8 +1,7 @@
 import queryer
 
-url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
 query = {
-    'composition': 'TME:8:8 NG:3:3',
+    'composition': 'Ni:1:1 Ti:2:2',
     'number_of_elements': '2'
     }
 ##query = {'icsd_collection_code': 181801}
