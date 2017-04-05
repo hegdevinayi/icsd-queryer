@@ -10,7 +10,7 @@ Welcome to icsd-queryer's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   icsdqueryer
+   queryer
 
 Indices and tables
 ==================

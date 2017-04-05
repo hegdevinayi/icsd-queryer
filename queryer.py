@@ -4,6 +4,7 @@ import shutil
 import json
 import time
 from selenium import webdriver
+import pyvirtualdisplay as pyvd
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
 class Error(Exception):
@@ -42,6 +43,7 @@ class Queryer:
         Attributes:
             url: URL of the search page
             query: query to be posted to the webform (see kwargs)
+            virt_display: Display object from pyvirtualdisplay
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
@@ -50,6 +52,7 @@ class Queryer:
         self.query = query
         sys.stdout.write('Initializing a WebDriver...\n')
         sys.stdout.flush()
+        self.virt_display = None
         self.driver = self._initialize_driver()
         sys.stdout.write('done.\n')
         sys.stdout.flush()
@@ -61,9 +64,11 @@ class Queryer:
         self.hits = 0
 
     def _initialize_driver(self):
+        self.virt_display = pyvd.Display(visible=0, size=(1600, 900))
+        self.virt_display.start()
         browser_data_dir = os.path.join(os.getcwd(), 'browser_data')
         if os.path.exists(browser_data_dir):
-            shutil.rmtree(browser_data_dir)
+            shutil.rmtree(browser_data_dir, ignore_errors=True)
         self.download_dir = os.path.abspath(os.path.join(browser_data_dir,
                                                          'driver_downloads'))
         sys.stdout.write('Starting a ChromeDriver ')
@@ -71,6 +76,10 @@ class Queryer:
         sys.stdout.write('"{}"\n'.format(self.download_dir))
         sys.stdout.write('... ')
         _options = webdriver.ChromeOptions()
+        # using to --no-startup-window to run Chrome in the background throws a
+        # WebDriver.Exception with "Message: unknown error: Chrome failed to
+        # start: exited normally"
+        ##_options.add_argument('--no-startup-window ')
         _options.add_argument('user-data-dir={}'.format(browser_data_dir))
         prefs = {'download.default_directory': self.download_dir}
         _options.add_experimental_option("prefs", prefs)
@@ -82,10 +91,17 @@ class Queryer:
         is not in the element text, raise Error.
         """
         header_id = 'content_form:mainSearchPanel_header'
-        header = self.driver.find_element_by_id(header_id)
-        if 'Basic Search' not in header.text:
+        try:
+            header = self.driver.find_element_by_id(header_id)
+        except:
+            self.quit()
             error_message = 'Failed to load Basic Search & Retrieve'
             raise Error(error_message)
+        else:
+            if 'Basic Search' not in header.text:
+                self.quit()
+                error_message = 'Failed to load Basic Search & Retrieve'
+                raise Error(error_message)
 
     def post_query_to_form(self):
         """
@@ -95,6 +111,7 @@ class Queryer:
         (Also check if the 'List View' page has been loaded successfully.)
         """
         if not self.query:
+            self.quit()
             error_message = 'Empty query'
             raise Error(error_message)
 
@@ -121,18 +138,22 @@ class Queryer:
         Parse element text to get number of hits for the current query
         (last item when text is split), assign to `self.hits`.
         """
-        title = self.driver.find_element_by_class_name('title')
-        if 'List View' not in title.text:
-            error_message = 'Failed to load "List View" of results'
-            raise Error(error_message)
         try:
-            self.hits = int(title.text.split()[-1])
-        except TypeError:
+            title = self.driver.find_element_by_class_name('title')
+        except:
+            self.quit()
             error_message= 'No hits/too many hits. Modify your query.'
             raise Error(error_message)
         else:
-            sys.stdout.write('The query yielded {} hits.\n'.format(self.hits))
-            sys.stdout.flush()
+            if 'List View' not in title.text:
+                self.quit()
+                error_message = 'Failed to load "List View" of results'
+                raise Error(error_message)
+            else:
+                self.hits = int(title.text.split()[-1])
+                sys.stdout.write('The query yielded ')
+                sys.stdout.write('{} hits.\n'.format(self.hits))
+                sys.stdout.flush()
 
     def _click_select_all(self):
         """
@@ -154,11 +175,19 @@ class Queryer:
         Use By.ID to locate all 'title' elements. If none of the title texts
         have 'Detailed View', raise an Error.
         """
-        titles = self.driver.find_elements_by_class_name('title')
-        detailed_view = any(['Detailed View' in t.text for t in titles])
-        if not detailed_view:
+        try:
+            titles = self.driver.find_elements_by_class_name('title')
+        except:
+            self.quit()
             error_message = 'Failed to load "Detailed View" of results'
             raise Error(error_message)
+
+        else:
+            detailed_view = any(['Detailed View' in t.text for t in titles])
+            if not detailed_view:
+                self.quit()
+                error_message = 'Failed to load "Detailed View" of results'
+                raise Error(error_message)
 
     def _expand_all(self):
         """
@@ -189,13 +218,17 @@ class Queryer:
             c. save "screenshot.png" into the directory
             d. export the CIF into the directory
         Close the browser session and quit.
+
+        Return: (list) A list of ICSD Collection Codes of entries parsed
         """
         if self._get_number_of_entries_loaded() != self.hits:
+            self.quit()
             error_message = '# Hits != # Entries in Detailed View'
             raise Error(error_message)
 
         sys.stdout.write('Parsing all the entries... \n')
         sys.stdout.flush()
+        entries_parsed = []
         for i in range(self.hits):
             # get entry data
             entry_data = self.parse_entry()
@@ -235,6 +268,7 @@ class Queryer:
             sys.stdout.write('Data exported into ')
             sys.stdout.write('folder "{}"\n'.format(coll_code))
             sys.stdout.flush()
+            entries_parsed.append(coll_code)
 
             if self.hits != 1:
                 self._go_to_next_entry()
@@ -243,6 +277,7 @@ class Queryer:
         sys.stdout.flush()
         self.quit()
         sys.stdout.write(' done.\n')
+        return entries_parsed
 
     def _go_to_next_entry(self):
         """
@@ -298,6 +333,7 @@ class Queryer:
                     collection_code = int(title.text.split()[-1])
                     break
                 except:
+                    self.quit()
                     error_message = 'Failed to parse the ICSD Collection Code'
                     raise Error(error_message)
         return collection_code
@@ -398,8 +434,8 @@ class Queryer:
         """
         element = self.driver.find_element_by_id('textfieldPub1')
         raw_text = element.get_attribute('value').strip()
-        a, b, c, alpha, beta, gamma = [ float(e.split('(')[0]) for e in
-                                       raw_text.split() ]
+        a, b, c, alpha, beta, gamma = [ float(e.split('(')[0].strip('.')) for e
+                                       in raw_text.split() ]
         cell_parameters = {'a': a, 'b': b, 'c': c, 'alpha': alpha, 'beta': beta,
                            'gamma': gamma}
         return cell_parameters
@@ -622,7 +658,7 @@ class Queryer:
         node = self.driver.find_element_by_xpath(xpath)
         R_value = node.get_attribute('value').strip()
         if R_value:
-            R_value = float(R_value)
+            R_value = float(R_value.split('(')[0])
         return R_value
 
     # checkboxes
@@ -792,23 +828,25 @@ class Queryer:
         filename_element.send_keys(base_filename)
         self.driver.find_element_by_id('aExportCifFile').click()
 
-    def save_screenshot(self, size=(1600,900), fname='ICSD.png'):
+    def save_screenshot(self, size=None, fname='ICSD.png'):
         """
         Save screenshot of the current page.
 
         Keyword arguments:
-            size: (default: (1600,900))
+            size: (default: None)
                 tuple (width, height) of the current window
 
             fname: (default: 'ICSD.png')
                 save screenshot into this file
         """
-        self.driver.set_window_size(size[0], size[1])
+        if size:
+            self.driver.set_window_size(size[0], size[1])
         self.driver.save_screenshot(fname)
 
     def quit(self):
         self.driver.stop_client()
         self.driver.quit()
+        self.virt_display.stop()
 
     def perform_icsd_query(self):
         """
@@ -817,4 +855,4 @@ class Queryer:
         self.post_query_to_form()
         self._click_select_all()
         self._click_show_detailed_view()
-        self.parse_entries()
+        return self.parse_entries()

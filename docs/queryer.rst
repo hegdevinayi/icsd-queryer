@@ -1,7 +1,7 @@
 ICSD Queryer
 ============
 
-.. module:: queryer.icsdqueryer
+.. module:: queryer
 
 Queryer
 ^^^^^^^
