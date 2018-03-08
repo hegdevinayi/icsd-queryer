@@ -7,61 +7,131 @@ from selenium import webdriver
 import pyvirtualdisplay as pyvd
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
-class Error(Exception):
+class QueryerError(Exception):
     pass
 
-class Queryer:
+class Queryer(object):
     """
     Base class to query the ICSD via the web interface using a Selenium
     WebDriver (http://selenium-python.readthedocs.io/).
     """
 
-    _url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
-    _query = {}
-    def __init__(self, url=_url, query=_query):
+    def __init__(self,
+                 url=None,
+                 query=None,
+                 save_screenshot=None,
+                 structure_source=None):
         """
         Initialize the webdriver and load the URL.
         (Also, check if the "Basic Search" page has loaded successfully.)
 
-        **[Note1]**: Only ChromeDriver has been implemented.
-        **[Note2]**: Only the 'Basic Search & Retrieve' form has been implemented.
+        **[Note 1]**: Only ChromeDriver has been implemented.
+        **[Note 2]**: Only the 'Basic Search & Retrieve' form has been implemented.
 
         Keyword arguments:
             url:
                 URL of the search page
 
             query:
-                the query to be posted to the webform -- a dictionary of field
+                The query to be posted to the webform -- a dictionary of field
                 names as keys and what to fill in them as the corresponding
                 values. Currently supported field names:
                 1. composition
                 2. number_of_elements
                 3. icsd_collection_code
                 E.g., {'composition': 'Ni:2:2 Ti:1:1', 'number_of_elements': 2}
+
                 **[Note]**: field names must _exactly_ match those listed above!
+
+            save_screenshot:
+                Boolean specifying whether a screenshot of the ICSD web page
+                should be saved locally?
+                (Default: False)
+
+            structure_source:
+                **NOT IMPLEMENTED**
+                String specifying whether the search should be limited to only
+                experimental structures, theoretical structures, or both.
+                Options: "E"/"T"/"A" for experimental/theoretical/all structures
+                (Default: "E")
 
         Attributes:
             url: URL of the search page
-            query: query to be posted to the webform (see kwargs)
+            query: query to be posted to the webform
+            save_screenshot: whether the ICSD page should be saved as a screenshot
+            structure_source: search for experimental/theoretical/all structures
             virt_display: Display object from pyvirtualdisplay
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
         """
+        self._url = None
         self.url = url
+
+        self._query = None
         self.query = query
-        sys.stdout.write('Initializing a WebDriver...\n')
-        sys.stdout.flush()
-        self.virt_display = None
+
+        self._save_screenshot = None
+        self.save_screenshot = save_screenshot
+
+        self._structure_source = None
+        self.structure_source = structure_source
+
+        self.virt_diplay = None
+
         self.driver = self._initialize_driver()
-        sys.stdout.write('done.\n')
-        sys.stdout.flush()
-        sys.stdout.write('Loading {}... '.format(self.url))
-        sys.stdout.flush()
         self.driver.get(self.url)
-        sys.stdout.write('done.\n')
+
         self._check_basic_search()
+
         self.hits = 0
+
+    @property
+    def url(self):
+        return self._url
+
+    @url.setter
+    def url(self, url):
+        if not url:
+            url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
+        self._url = url
+
+    @property
+    def query(self):
+        return self._query
+
+    @query.setter
+    def query(self, query):
+        if not query:
+            self._query = {}
+        else:
+            self._query = query
+
+    @property
+    def save_screenshot(self):
+        return self._save_screenshot
+
+    @save_screenshot.setter
+    def save_screenshot(self, save_screenshot):
+        if not save_screenshot:
+            self._save_screenshot = False
+        elif is_instance(save_screenshot, str):
+            self._save_screenshot = save_screenshot.lower() == 't'
+        else:
+            self._save_screenshot = save_screenshot
+
+    @property
+    def structure_source(self):
+        return self._structure_source
+
+    @structure_source.setter
+    def structure_source(self, structure_source):
+        if not structure_source:
+            self._structure_source = 'A'
+        elif structure_source.upper()[0] not in ['E', 'T', 'A']:
+            self._structure_source = 'A'
+        else:
+            self._structure_source = structure_source.upper()[0]
 
     def _initialize_driver(self):
         self.virt_display = pyvd.Display(visible=0, size=(1600, 900))
@@ -72,9 +142,9 @@ class Queryer:
         self.download_dir = os.path.abspath(os.path.join(browser_data_dir,
                                                          'driver_downloads'))
         sys.stdout.write('Starting a ChromeDriver ')
-        sys.stdout.write('with the default download directory\n')
-        sys.stdout.write('"{}"\n'.format(self.download_dir))
-        sys.stdout.write('... ')
+        sys.stdout.write('with the default download directory:\n')
+        sys.stdout.write(' "{}"'.format(self.download_dir))
+        sys.stdout.write('...\n')
         _options = webdriver.ChromeOptions()
         # using to --no-startup-window to run Chrome in the background throws a
         # WebDriver.Exception with "Message: unknown error: Chrome failed to
@@ -96,12 +166,27 @@ class Queryer:
         except:
             self.quit()
             error_message = 'Failed to load Basic Search & Retrieve'
-            raise Error(error_message)
+            raise QueryerError(error_message)
         else:
             if 'Basic Search' not in header.text:
                 self.quit()
                 error_message = 'Failed to load Basic Search & Retrieve'
-                raise Error(error_message)
+                raise QueryerError(error_message)
+
+    def select_structure_source(self):
+        """
+        Select the appropriate radio button in the "Content Selection" panel (in
+        a menu on the left of the main page) based on the specified strucure
+        sources.
+        """
+        if self.structure_source == 'E':
+            return
+        tag_dict = {'T': 'Theoretical Structures only',
+                    'A': 'All Structures'}
+        number_tag = tag_dict.get(self.structure_source)
+        xpath = "//table/tbody/tr/td/label[text()[contains(., '{}')]]".format(tag_dict[self.structure_source])
+        radio_label = self.driver.find_element_by_xpath(xpath)
+        radio_label.click()
 
     def post_query_to_form(self):
         """
@@ -113,7 +198,7 @@ class Queryer:
         if not self.query:
             self.quit()
             error_message = 'Empty query'
-            raise Error(error_message)
+            raise QueryerError(error_message)
 
         sys.stdout.write('Querying the ICSD for\n')
         for k, v in self.query.items():
@@ -143,12 +228,12 @@ class Queryer:
         except:
             self.quit()
             error_message= 'No hits/too many hits. Modify your query.'
-            raise Error(error_message)
+            raise QueryerError(error_message)
         else:
             if 'List View' not in title.text:
                 self.quit()
                 error_message = 'Failed to load "List View" of results'
-                raise Error(error_message)
+                raise QueryerError(error_message)
             else:
                 self.hits = int(title.text.split()[-1])
                 sys.stdout.write('The query yielded ')
@@ -180,14 +265,14 @@ class Queryer:
         except:
             self.quit()
             error_message = 'Failed to load "Detailed View" of results'
-            raise Error(error_message)
+            raise QueryerError(error_message)
 
         else:
             detailed_view = any(['Detailed View' in t.text for t in titles])
             if not detailed_view:
                 self.quit()
                 error_message = 'Failed to load "Detailed View" of results'
-                raise Error(error_message)
+                raise QueryerError(error_message)
 
     def _expand_all(self):
         """
@@ -224,7 +309,7 @@ class Queryer:
         if self._get_number_of_entries_loaded() != self.hits:
             self.quit()
             error_message = '# Hits != # Entries in Detailed View'
-            raise Error(error_message)
+            raise QueryerError(error_message)
 
         sys.stdout.write('Parsing all the entries... \n')
         sys.stdout.flush()
@@ -242,11 +327,12 @@ class Queryer:
             # write the parsed data into a JSON file in the directory
             json_file = os.path.join(coll_code, 'meta_data.json')
             with open(json_file, 'w') as fw:
-                json.dump(entry_data, fw)
+                json.dump(entry_data, fw, indent=2)
 
             # save the screenshot the current page into the directory
-            screenshot_file = os.path.join(coll_code, 'screenshot.png')
-            self.save_screenshot(fname=screenshot_file)
+            if self.save_screenshot:
+                screenshot_file = os.path.join(coll_code, 'screenshot.png')
+                self.save_screenshot(fname=screenshot_file)
 
             # get the CIF file
             self.export_CIF()
@@ -335,7 +421,7 @@ class Queryer:
                 except:
                     self.quit()
                     error_message = 'Failed to parse the ICSD Collection Code'
-                    raise Error(error_message)
+                    raise QueryerError(error_message)
         return collection_code
 
     # panel: "Summary"
@@ -736,11 +822,17 @@ class Queryer:
         """
         return self._is_checkbox_enabled('absolute_config_determined')
 
-    def is_theoretical_calculation(self):
+    def is_experimental_PDF_number(self):
         """
-        Is the 'Theoretically calculated structures' checkbox enabled?
+        Is the 'Experimental PDF Number assigned' checkbox enabled?
         """
-        return self._is_checkbox_enabled('theoretical_calculation')
+        return self._is_checkbox_enabled('experimental_PDF_number')
+
+    def is_temperature_factors_available(self):
+        """
+        Is the 'Temperature Factors available' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('temperature_factors_available')
 
     def is_magnetic_structure_available(self):
         """
@@ -754,6 +846,12 @@ class Queryer:
         """
         return self._is_checkbox_enabled('anharmonic_temperature_factors_given')
 
+    def is_calculated_PDF_number(self):
+        """
+        Is the 'Calculated PDF Number assigned' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('calculated_PDF_number')
+
     def is_NMR_data_available(self):
         """
         Is the 'NMR Data available' checkbox enabled?
@@ -766,6 +864,18 @@ class Queryer:
         """
         return self._is_checkbox_enabled('correction_of_previous')
 
+    def is_cell_constants_without_sd(self):
+        """
+        Is the 'Cell Constants without s.d.' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('cell_constants_without_sd')
+
+    def is_only_cell_and_structure_type(self):
+        """
+        Is the 'Only Cell and Structure Type Determined' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('only_cell_and_structure_type')
+
     # subpanel: "Properties of Structure"
     def is_polytype(self):
         """
@@ -773,11 +883,23 @@ class Queryer:
         """
         return self._is_checkbox_enabled('polytype')
 
+    def is_is_prototype_structure(self):
+        """
+        Is the 'Prototype Structure Type' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('is_prototype_structure')
+
     def is_order_disorder(self):
         """
         Is the 'Order/Disorder Structure' checkbox enabled?
         """
         return self._is_checkbox_enabled('order_disorder')
+
+    def is_modulated_structure(self):
+        """
+        Is the 'Modulated Structure' checkbox enabled?
+        """
+        return self._is_checkbox_enabled('modulated_structure')
 
     def is_disordered(self):
         """
@@ -785,29 +907,17 @@ class Queryer:
         """
         return self._is_checkbox_enabled('disordered')
 
-    def is_defect(self):
-        """
-        Is the 'Defect Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('defect')
-
-    def is_misfit_layer(self):
-        """
-        Is the 'Misfit Layer Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('misfit_layer')
-
     def is_mineral(self):
         """
         Is the 'Mineral' checkbox enabled?
         """
         return self._is_checkbox_enabled('mineral')
 
-    def is_is_prototype_structure(self):
+    def is_is_structure_prototype(self):
         """
         Is the 'Structure Prototype' checkbox enabled?
         """
-        return self._is_checkbox_enabled('is_prototype_structure')
+        return self._is_checkbox_enabled('is_structure_prototype')
 
     def export_CIF(self, base_filename='ICSD_Coll_Code'):
         """
@@ -852,6 +962,7 @@ class Queryer:
         """
         Post the query to form, parse data for all the entries. (wrapper)
         """
+        ##self.select_structure_source()
         self.post_query_to_form()
         self._click_select_all()
         self._click_show_detailed_view()
