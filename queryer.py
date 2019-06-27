@@ -3,12 +3,16 @@ import os
 import shutil
 import json
 import time
+
 from selenium import webdriver
 import pyvirtualdisplay as pyvd
+
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
+
 
 class QueryerError(Exception):
     pass
+
 
 class Queryer(object):
     """
@@ -20,13 +24,13 @@ class Queryer(object):
                  url=None,
                  query=None,
                  save_screenshot=None,
-                 structure_source=None):
+                 structure_sources=None):
         """
         Initialize the webdriver and load the URL.
         (Also, check if the "Basic Search" page has loaded successfully.)
 
         **[Note 1]**: Only ChromeDriver has been implemented.
-        **[Note 2]**: Only the 'Basic Search & Retrieve' form has been implemented.
+        **[Note 2]**: Only the 'Basic Search & Retrieve' form is implemented.
 
         Keyword arguments:
             url:
@@ -41,29 +45,40 @@ class Queryer(object):
                 3. icsd_collection_code
                 E.g., {'composition': 'Ni:2:2 Ti:1:1', 'number_of_elements': 2}
 
-                **[Note]**: field names must _exactly_ match those listed above!
+                **[Note]**: field names must *exactly* match the ones
+                listed above.
 
             save_screenshot:
                 Boolean specifying whether a screenshot of the ICSD web page
                 should be saved locally?
                 (Default: False)
 
-            structure_source:
-                **NOT IMPLEMENTED**
-                String specifying whether the search should be limited to only
-                experimental structures, theoretical structures, or both.
-                Options: "E"/"T"/"A" for experimental/theoretical/all structures
-                (Default: "E")
+            structure_sources:
+                List of Strings specifying whether the search should be limited
+                to one of the below or a combination thereof:
+                    1. "expt" = Experimental inorganic structures
+                    2. "mofs" = Experimental metal-organic structures
+                    3. "theo" = Theoretical structures
+                These options correspond to the checkboxes available on the
+                "Content Selection" panel on the left in the ICSD Web Search.
+
+                For example, ["expt"] queries for only experimental inorganic
+                structures, ["mofs"] queries for only experimental
+                metal-organic structures, ["expt", "theo"] queries for
+                experimental inorganic AND theoretical structures, and so on.
+
+                (Default: ["expt"])
 
         Attributes:
             url: URL of the search page
             query: query to be posted to the webform
-            save_screenshot: whether the ICSD page should be saved as a screenshot
-            structure_source: search for experimental/theoretical/all structures
+            save_screenshot: whether the ICSD page should be saved as a screensho
+            structure_sources: search for experimental/theoretical/all structures
             virt_display: Display object from pyvirtualdisplay
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
+
         """
         self._url = None
         self.url = url
@@ -74,13 +89,14 @@ class Queryer(object):
         self._save_screenshot = None
         self.save_screenshot = save_screenshot
 
-        self._structure_source = None
-        self.structure_source = structure_source
+        self._structure_sources = None
+        self.structure_sources = structure_sources
 
         self.virt_diplay = None
 
         self.driver = self._initialize_driver()
         self.driver.get(self.url)
+        self.driver.implicitly_wait(1.0)
 
         self._check_basic_search()
 
@@ -115,23 +131,23 @@ class Queryer(object):
     def save_screenshot(self, save_screenshot):
         if not save_screenshot:
             self._save_screenshot = False
-        elif is_instance(save_screenshot, str):
+        elif isinstance(save_screenshot, str):
             self._save_screenshot = save_screenshot.lower() == 't'
         else:
             self._save_screenshot = save_screenshot
 
     @property
-    def structure_source(self):
-        return self._structure_source
+    def structure_sources(self):
+        return self._structure_sources
 
-    @structure_source.setter
-    def structure_source(self, structure_source):
-        if not structure_source:
-            self._structure_source = 'A'
-        elif structure_source.upper()[0] not in ['E', 'T', 'A']:
-            self._structure_source = 'A'
+    @structure_sources.setter
+    def structure_sources(self, structure_sources):
+        if not structure_sources:
+            self._structure_sources = ['e']
         else:
-            self._structure_source = structure_source.upper()[0]
+            self._structure_sources = []
+            for s in structure_sources:
+                self._structure_sources.append(s.lower()[0])
 
     def _initialize_driver(self):
         self.virt_display = pyvd.Display(visible=0, size=(1600, 900))
@@ -173,20 +189,35 @@ class Queryer(object):
                 error_message = 'Failed to load Basic Search & Retrieve'
                 raise QueryerError(error_message)
 
-    def select_structure_source(self):
+    def select_structure_sources(self):
         """
-        Select the appropriate radio button in the "Content Selection" panel (in
+        Select the appropriate checkbox in the "Content Selection" panel (in
         a menu on the left of the main page) based on the specified strucure
         sources.
+
+        By default, the "Experim. inorganic structures" checkbox is selected, so
+        click appropriately.
+
         """
-        if self.structure_source == 'E':
-            return
-        tag_dict = {'T': 'Theoretical Structures only',
-                    'A': 'All Structures'}
-        number_tag = tag_dict.get(self.structure_source)
-        xpath = "//table/tbody/tr/td/label[text()[contains(., '{}')]]".format(tag_dict[self.structure_source])
-        radio_label = self.driver.find_element_by_xpath(xpath)
-        radio_label.click()
+        labels = {
+            'e': [0, 'Experim. inorganic'],
+            'm': [1, 'Experim. metal-organic'],
+            't': [2, 'Theoretical']
+        }
+        for label in labels:
+            xpath = "//tbody/tr/td/label[text()[contains(., '{}')]]".format(
+                labels[label][1])
+            clickable_elem = self.driver.find_element_by_xpath(xpath)
+            checkbox = self.driver.find_element_by_id(
+                'content_form:uiSelectContent:{}'.format(labels[label][0]))
+            if label in self.structure_sources:
+                if not checkbox.is_selected():
+                    clickable_elem.click()
+                    time.sleep(5.0)
+            elif label not in self.structure_sources:
+                if checkbox.is_selected():
+                    clickable_elem.click()
+                    time.sleep(5.0)
 
     def post_query_to_form(self):
         """
@@ -224,10 +255,10 @@ class Queryer(object):
         (last item when text is split), assign to `self.hits`.
         """
         try:
-            title = self.driver.find_element_by_class_name('title')
+            title = self.driver.find_element_by_class_name('ui-panel-title')
         except:
             self.quit()
-            error_message= 'No hits/too many hits. Modify your query.'
+            error_message = 'No hits/too many hits. Modify your query.'
             raise QueryerError(error_message)
         else:
             if 'List View' not in title.text:
@@ -242,51 +273,55 @@ class Queryer(object):
 
     def _click_select_all(self):
         """
-        Use By.ID to locate the 'Select All' ('LVSelect') button, and click it.
+        Use By.ID to locate the 'Select All' button, and click it.
         """
-        self.driver.find_element_by_id('LVSelect').click()
+        time.sleep(1.0)
+        self.driver.find_element_by_id(
+            'display_form:listViewTable:uiSelectAllRows').click()
 
     def _click_show_detailed_view(self):
         """
-        Use By.ID to locate the 'Show Detailed View' ('LVDetailed') button, and
-        click it.
+        Use By.ID to locate the 'Show Detailed View' button, and click it.
         """
-        self.driver.find_element_by_id('LVDetailed').click()
+        time.sleep(1.0)
+        self.driver.find_element_by_id(
+            'display_form:btnEntryViewDetailed').click()
         self._check_detailed_view()
         self._expand_all()
 
     def _check_detailed_view(self):
         """
-        Use By.ID to locate all 'title' elements. If none of the title texts
-        have 'Detailed View', raise an Error.
+        Use By.CLASS_NAME to locate the 'title' element, and verify that the
+        "Detailed View" page is loaded as expected.
         """
+        if 'Details on Search Result' in self.driver.title:
+            return
         try:
-            titles = self.driver.find_elements_by_class_name('title')
+            title = self.driver.find_element_by_class_name('ui-panel-title')
         except:
             self.quit()
             error_message = 'Failed to load "Detailed View" of results'
             raise QueryerError(error_message)
 
         else:
-            detailed_view = any(['Detailed View' in t.text for t in titles])
-            if not detailed_view:
+            if 'Detailed View' not in title.text:
                 self.quit()
                 error_message = 'Failed to load "Detailed View" of results'
                 raise QueryerError(error_message)
 
     def _expand_all(self):
         """
-        Use By.CSS_SELECTOR to locate the 'Expand All' ('a#ExpandAll.no_print')
-        button, and click it.
+        Use By.ID to locate the 'Expand All' button, and click it.
         """
-        self.driver.find_element_by_css_selector('a#ExpandAll.no_print').click()
+        time.sleep(1.0)
+        self.driver.find_element_by_id('display_form:expandAllButton').click()
 
     def _get_number_of_entries_loaded(self):
         """
         Use By.CLASS_NAME to locate 'title' elements, split the element text
         with 'Detailed View' in it and return the last item in the list.
         """
-        titles = self.driver.find_elements_by_class_name('title')
+        titles = self.driver.find_elements_by_class_name('ui-panel-title')
         for title in titles:
             if 'Detailed View' in title.text:
                 n_entries_loaded = int(title.text.split()[-1])
@@ -313,7 +348,6 @@ class Queryer(object):
 
         sys.stdout.write('Parsing all the entries... \n')
         sys.stdout.flush()
-        entries_parsed = []
         for i in range(self.hits):
             # get entry data
             entry_data = self.parse_entry()
@@ -325,7 +359,7 @@ class Queryer(object):
             os.mkdir(coll_code)
 
             # write the parsed data into a JSON file in the directory
-            json_file = os.path.join(coll_code, 'meta_data.json')
+            json_file = os.path.join(coll_code, 'metadata.json')
             with open(json_file, 'w') as fw:
                 json.dump(entry_data, fw, indent=2)
 
@@ -335,74 +369,54 @@ class Queryer(object):
                 self.save_screenshot(fname=screenshot_file)
 
             # get the CIF file
-            self.export_CIF()
+            self.export_cif()
             # uncomment the next few lines for automatic copying of CIF files
             # into the correct folders
             # wait for the file download to be completed
-            CIF_name = 'ICSD_Coll_Code_{}.cif'.format(coll_code)
-            CIF_source_loc = os.path.join(self.download_dir, CIF_name)
+            cif_name = 'ICSD_CollCode{}.cif'.format(coll_code)
+            cif_source_loc = os.path.join(self.download_dir, cif_name)
             while True:
-                if os.path.exists(CIF_source_loc):
+                if os.path.exists(cif_source_loc):
                     break
                 else:
-                    time.sleep(0.1)
+                    time.sleep(1.0)
             # move it into the directory of the current entry
-            CIF_dest_loc = os.path.join(coll_code, '{}.cif'.format(coll_code))
-            shutil.move(CIF_source_loc, CIF_dest_loc)
+            cif_dest_loc = os.path.join(coll_code, '{}.cif'.format(coll_code))
+            shutil.move(cif_source_loc, cif_dest_loc)
 
             sys.stdout.write('[{}/{}]: '.format(i+1, self.hits))
             sys.stdout.write('Data exported into ')
             sys.stdout.write('folder "{}"\n'.format(coll_code))
             sys.stdout.flush()
-            entries_parsed.append(coll_code)
 
-            if self.hits != 1:
+            if i < (self.hits - 1):
                 self._go_to_next_entry()
 
         sys.stdout.write('Closing the browser session and exiting...')
         sys.stdout.flush()
         self.quit()
         sys.stdout.write(' done.\n')
-        return entries_parsed
+        return
 
     def _go_to_next_entry(self):
         """
-        Use By.CLASS_NAME to locate the 'Next' button ('button_vcr_next'), and
-        click it.
+        Use By.ID to locate the 'Next' button, and click it.
         """
-        self.driver.find_element_by_class_name('button_vcr_next').click()
+        time.sleep(1.0)
+        self.driver.find_element_by_id('display_form:buttonNext').click()
 
     def parse_entry(self):
         """
         Parse all `tags.ICSD_PARSE_TAGS` + the ICSD Collection Code for the
         current entry, and construct a dictionary `parsed_data` with tag:value.
 
-        For each tag in `tags.ICSD_PARSE_TAGS`, call the method named
-        `get_[tag]` or `is_[tag]` depending on whether the value to be parsed is
-        a text field or checkbox, respectively, and raise an Error if the
-        corresponding method is not found.
-
         Return: (dict) `parsed_data` with [tag]:[parsed value]
         """
+        time.sleep(1.0)
         parsed_data = {}
         parsed_data['collection_code'] = self.get_collection_code()
         for tag in ICSD_PARSE_TAGS.keys():
-            # assume text field
-            method = 'get_{}'.format(tag)
-            try:
-                parsed_data[tag] = getattr(self, method)()
-            except AttributeError:
-                pass
-            else:
-                continue
-
-            # assume checkbox
-            method = 'is_{}'.format(tag)
-            try:
-                parsed_data[tag] = getattr(self, method)()
-            except AttributeError:
-                sys.stdout.write('"{}" parser not implemented!\n'.format(tag))
-                continue
+            parsed_data[tag] = self.parse_property(tag)
         return parsed_data
 
     def get_collection_code(self):
@@ -412,531 +426,70 @@ class Queryer(object):
 
         Return: (integer) ICSD Collection Code
         """
-        titles = self.driver.find_elements_by_class_name('title')
+        titles = self.driver.find_elements_by_class_name('ui-panel-title')
         for title in titles:
             if 'Summary' in title.text:
                 try:
-                    collection_code = int(title.text.split()[-1])
-                    break
+                    return int(title.text.split()[-1])
                 except:
                     self.quit()
                     error_message = 'Failed to parse the ICSD Collection Code'
                     raise QueryerError(error_message)
-        return collection_code
 
-    # panel: "Summary"
-    def get_PDF_number(self):
-        """
-        Use By.XPATH to locate a 'td' node with the tag name (stored in
-        `tags.ICSD_PARSE_TAGS`), parse the node text.
-
-        Return: (string) PDF-number if available, empty string otherwise
-        """
-        pdf_number = ''
-        tag = ICSD_PARSE_TAGS['PDF_number']
-        xpath = "//td[text()[contains(., '{}')]]/../td/div".format(tag)
-        nodes = self.driver.find_elements_by_xpath(xpath)
-        # if PDF_number field is empty, return "" instead of "R-value"
-        if nodes[0].text != 'R-value':
-            pdf_number = nodes[0].text.split('\n')[0]
-        return pdf_number
-
-    def get_authors(self):
-        """
-        Use By.XPATH to locate a 'td' node with the tag name (stored in
-        `tags.ICSD_PARSE_TAGS`), parse the node text.
-
-        Return: (string) Authors if available, empty string otherwise
-        """
-        authors = ''
-        tag = ICSD_PARSE_TAGS['authors']
-        xpath = "//td[text()[contains(., '{}')]]/../td".format(tag)
-        nodes = self.driver.find_elements_by_xpath(xpath)
-        authors = nodes[1].text.strip().replace('\n', ' ')
-        return authors
-
-    def get_publication_title(self):
-        """
-        Use By.ID to locate 'Title of Article' ['textfield13'], parse the
-        element text.
-
-        Return: (string) Publication title if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfield13')
-        return element.text.strip().replace('\n', ' ')
-
-    def get_reference(self):
-        """
-        Use By.ID to locate 'Reference' for the publication ['textfield12'],
-        parse the element text.
-
-        Return: (string) Bibliographic reference if available, empty string
-        otherwise
-        """
-        element = self.driver.find_element_by_id('textfield12')
-        return element.text.strip().replace('\n', ' ')
-
-    # panel: "Chemistry"
-    def get_chemical_formula(self):
-        """
-        Use By.ID to locate 'Sum Form' ['textfieldChem1'], parse the elemnent
-        text.
-
-        Return: (string) Chemical formula if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldChem1')
-        return element.get_attribute('value').strip()
-
-    def get_structural_formula(self):
-        """
-        Use By.ID to locate 'Struct. Form.' ['textfieldChem3'], parse the
-        element text.
-
-        Return: (string) Structural formula if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldChem3')
-        return element.text.strip()
-
-    def get_AB_formula(self):
-        """
-        Use By.ID to locate 'AB Formula' ['textfieldChem6'], parse the element
-        text.
-
-        Return: (string) AB formula if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldChem6')
-        return element.get_attribute('value').strip()
-
-    # panel: "Published Crystal Structure Data"
-    def get_cell_parameters(self):
-        """
-        Use By.ID to locate 'Cell Parameters' ['textfieldPub1'] textfield, get
-        its 'value' attribute, strip uncertainties from the quantities, and
-        construct a cell parameters dictionary.
-
-        Return: (dictionary) Cell parameters with keys 'a', 'b', 'c', 'alpha',
-                'beta', 'gamma', and values in float
-                (Lattice vectors are in Angstrom, angles in degrees.)
-        """
-        element = self.driver.find_element_by_id('textfieldPub1')
-        raw_text = element.get_attribute('value').strip()
-        a, b, c, alpha, beta, gamma = [ float(e.split('(')[0].strip('.')) for e
-                                       in raw_text.split() ]
-        cell_parameters = {'a': a, 'b': b, 'c': c, 'alpha': alpha, 'beta': beta,
-                           'gamma': gamma}
-        return cell_parameters
-
-    def get_volume(self):
-        """
-        Use By.ID to locate 'Volume' ['textfieldPub2'], parse its 'value'
-        attribute.
-
-        Return: (float) Volume in cubic Angstrom
-        """
-        element = self.driver.find_element_by_id('textfieldPub2')
-        return float(element.get_attribute('value').strip())
-
-    def get_space_group(self):
-        """
-        Use By.ID to locate 'Space Group' ['textfieldPub5'], parse its 'value'
-        attribute.
-
-        Return: (string) Space group if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub5')
-        return element.get_attribute('value').strip()
-
-    def get_crystal_system(self):
-        """
-        Use By.ID to locate 'Crystal System' ['textfieldPub8'], parse its
-        'value' attribute.
-
-        Return: (string) Crystal system if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub8')
-        return element.get_attribute('value').strip()
-
-    def get_wyckoff_sequence(self):
-        """
-        Use By.ID to locate 'Wyckoff Sequence' ['textfieldPub11'], parse its
-        'value' attribute.
-
-        Return: (string) Wyckoff sequence if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub11')
-        return element.get_attribute('value').strip()
-
-    def get_formula_units_per_cell(self):
-        """
-        Use By.ID to locate 'Formula Units per Cell' ['textfieldPub3'], parse
-        its 'value' attribute.
-
-        Return: (integer) Formula units per unit cell
-        """
-        element = self.driver.find_element_by_id('textfieldPub3')
-        return int(element.get_attribute('value').strip())
-
-    def get_pearson(self):
-        """
-        Use By.ID to locate 'Pearson Symbol' ['textfieldPub6'], parse its
-        'value' attribute.
-
-        Return: (string) Pearson symbol if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub6')
-        return element.get_attribute('value').strip()
-
-    def get_crystal_class(self):
-        """
-        Use By.ID to locate 'Crystal Class' ['textfieldPub9'], parse its 'value'
-        attribute.
-
-        Return: (string) Crystal class if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub9')
-        return element.get_attribute('value').strip()
-
-    def get_structural_prototype(self):
-        """
-        Use By.ID to locate 'Structure Type' ['textfieldPub12'], parse its
-        'value' attribute.
-
-        Return: (string) Structure type if available, empty string otherwise
-        """
-        element = self.driver.find_element_by_id('textfieldPub12')
-        return element.get_attribute('value').strip()
-
-    # panel: "Bibliography"
-    def _get_references(self, n):
-        """
-        Use By.XPATH to locate 'td' nodes with the tag name (stored in
-        `tags.ICSD_PARSE_TAGS`), parse the text for each node.
-        ['Detailed View' page has text fields for 3 references]
-
-        Arguments:
-            n: which-th reference to parse (= 0/1/2)
-
-        Return: (string) Reference if available, empty string otherwise
-        """
-        tag = 'Reference'
-        xpath = "//td[text()[contains(., '{}')]]/../td/div".format(tag)
-        nodes = self.driver.find_elements_by_xpath(xpath)
-        reference = self._clean_reference_string(nodes[n].text)
-        return reference
-
-    def get_reference_1(self):
-        """
-        Parse '1st Reference' on the 'Detailed View' page.
-
-        Return: (string) Reference if available, empty string otherwise
-        """
-        return self._get_references(0)
-
-    def get_reference_2(self):
-        """
-        Parse '2nd Reference' on the 'Detailed View' page.
-
-        Return: (string) Reference if available, empty string otherwise
-        """
-        return self._get_references(1)
-
-    def get_reference_3(self):
-        """
-        Parse '3rd Reference' on the 'Detailed View' page.
-
-        Return: (string) Reference if available, empty string otherwise
-        """
-        return self._get_references(2)
-
-    def _clean_reference_string(self, r):
-        """
-        Strip the reference string of unrelated text.
-
-        Arguments:
-            r: Reference string to be cleaned
-
-        Return: (string) r, stripped
-        """
-        r = r.strip()
-        r = r.replace('Northwestern University Library', '').strip()
-        r = r.replace('\n', ' ')
-        return r
-
-    # panel: "Warnings & Comments"
-    def get_warnings(self):
-        """
-        Use By.ID to locate 'Warnings & Comments' ('ir_a_8_81a3e') block, then
-        use By.XPATH to locate rows in the 'Warnings' table
-        ('.//table/tbody/tr'), add text in each row, if any, to a list.
-
-        Return: (list) A list of warnings if any, empty list otherwise
-        """
-        warnings = []
-        block_element = self.driver.find_element_by_id('ir_a_8_81a3e')
-        warning_nodes = block_element.find_elements_by_xpath(".//table/tbody/tr")
-        for node in warning_nodes:
-            if node.text:
-                warnings.append(node.text.strip().replace('\n', ' '))
-        return warnings
-
-    def get_comments(self):
-        """
-        Use By.ID to locate 'Warnings & Comments' ('ir_a_8_81a3e') block, then
-        use By.XPATH to locate the individual 'Comments' divs, add text in each
-        div, if any, to a list.
-
-        Return: (list) A list of comments if any, empty list otherwise
-        """
-        comments = []
-        block_element = self.driver.find_element_by_id('ir_a_8_81a3e')
-        tag = ICSD_PARSE_TAGS['comments']
-        xpath = ".//div[text()[contains(., '{}')]]/../../div/div/div".format(tag)
-        comment_nodes = block_element.find_elements_by_xpath(xpath)
-        for node in comment_nodes:
-            if node.text:
-                comments.append(node.text.strip().replace('\n', ' '))
-        return comments
-
-    # panel: "Experimental Conditions"
-    # text fields
-    def get_temperature(self):
-        """
-        Use By.XPATH to locate the 'input' nodes associated with the div name
-        (stored in `tag.ICSD_PARSE_TAGS`), and get the 'value' attribute of the
-        first node.
-
-        Return: (string) Temperature if available, empty string otherwise
-        """
-        temperature = ''
-        tag = ICSD_PARSE_TAGS['temperature']
-        xpath = "//div[text()[contains(., '{}')]]/../../td/input".format(tag)
-        nodes = self.driver.find_elements_by_xpath(xpath)
-        temperature = nodes[0].get_attribute('value').strip()
-        return temperature
-
-    def get_pressure(self):
-        """
-        Use By.XPATH to locate the 'input' nodes associated with the div name
-        (stored in `tag.ICSD_PARSE_TAGS`), and get the 'value' attribute of the
-        second node.
-
-        Return: (string) Pressure if available, empty string otherwise
-        """
-        pressure = ''
-        tag = ICSD_PARSE_TAGS['pressure']
-        xpath = "//div[text()[contains(., '{}')]]/../../td/input".format(tag)
-        nodes = self.driver.find_elements_by_xpath(xpath)
-        pressure = nodes[1].get_attribute('value').strip()
-        return pressure
-
-    def get_R_value(self):
-        """
-        Use By.XPATH to locate the 'input' node with attribute 'text',
-        associated with 'td' node with the tag name (stored in
-        `tags.ICSD_PARSE_TAGS`), get its 'value' attribute.
-
-        Return: (float) R-value if available, None otherwise
-        """
-        R_value = None
-        tag = ICSD_PARSE_TAGS['R_value']
-        xpath = "//td[text()[contains(., '{}')]]".format(tag)
-        xpath += "/../td/input[@type='text']"
-        node = self.driver.find_element_by_xpath(xpath)
-        R_value = node.get_attribute('value').strip()
-        if R_value:
-            R_value = float(R_value.split('(')[0])
-        return R_value
-
-    # checkboxes
-    def _is_checkbox_enabled(self, tag_key):
-        """
-        Use By.XPATH to locate the 'input' node of type 'checkbox' associated
-        with a 'td' node with the tag name (stored in `tags.ICSD_PARSE_TAGS`),
-        and try to get its 'checked' attribute.
-
-        Return: (bool) True if checked, False otherwise
-        """
-        tag = ICSD_PARSE_TAGS[tag_key]
-        xpath = "//*[text()[contains(., '{}')]]".format(tag)
-        xpath += "/../input[@type='checkbox']"
-        node = self.driver.find_element_by_xpath(xpath)
-        if node.get_attribute('checked') is None:
-            return False
-        else:
-            return True
-
-    # subpanel: "Radiation Type"
-    def is_x_ray(self):
-        """
-        Is the 'X-ray' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('x_ray')
-
-    def is_electron_diffraction(self):
-        """
-        Is the 'Electrons' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('electron_diffraction')
-
-    def is_neutron_diffraction(self):
-        """
-        Is the 'Neutrons' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('neutron_diffraction')
-
-    def is_synchrotron(self):
-        """
-        Is the 'Synchrotron' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('synchrotron')
-
-    # subpanel: "Sample Type"
-    def is_powder(self):
-        """
-        Is the 'Powder' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('powder')
-
-    def is_single_crystal(self):
-        """
-        Is the 'Single-Cystal' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('single_crystal')
-
-    # subpanel: "Additional Information"
-    def is_twinned_crystal_data(self):
-        """
-        Is the 'Twinned Crystal Data' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('twinned_crystal_data')
-
-    def is_rietveld_employed(self):
-        """
-        Is the 'Rietveld Refinement employed' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('rietveld_employed')
-
-    def is_absolute_config_determined(self):
-        """
-        Is the 'Absolute Configuration Determined' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('absolute_config_determined')
-
-    def is_experimental_PDF_number(self):
-        """
-        Is the 'Experimental PDF Number assigned' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('experimental_PDF_number')
-
-    def is_temperature_factors_available(self):
-        """
-        Is the 'Temperature Factors available' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('temperature_factors_available')
-
-    def is_magnetic_structure_available(self):
-        """
-        Is the 'Magnetic Structure Available' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('magnetic_structure_available')
-
-    def is_anharmonic_temperature_factors_given(self):
-        """
-        Is the 'Anharmonic temperature factors given' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('anharmonic_temperature_factors_given')
-
-    def is_calculated_PDF_number(self):
-        """
-        Is the 'Calculated PDF Number assigned' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('calculated_PDF_number')
-
-    def is_NMR_data_available(self):
-        """
-        Is the 'NMR Data available' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('NMR_data_available')
-
-    def is_correction_of_previous(self):
-        """
-        Is the 'Correction of Earlier Work' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('correction_of_previous')
-
-    def is_cell_constants_without_sd(self):
-        """
-        Is the 'Cell Constants without s.d.' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('cell_constants_without_sd')
-
-    def is_only_cell_and_structure_type(self):
-        """
-        Is the 'Only Cell and Structure Type Determined' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('only_cell_and_structure_type')
-
-    # subpanel: "Properties of Structure"
-    def is_polytype(self):
-        """
-        Is the 'Polytype Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('polytype')
-
-    def is_is_prototype_structure(self):
-        """
-        Is the 'Prototype Structure Type' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('is_prototype_structure')
-
-    def is_order_disorder(self):
-        """
-        Is the 'Order/Disorder Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('order_disorder')
-
-    def is_modulated_structure(self):
-        """
-        Is the 'Modulated Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('modulated_structure')
-
-    def is_disordered(self):
-        """
-        Is the 'Disordered Structure' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('disordered')
-
-    def is_mineral(self):
-        """
-        Is the 'Mineral' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('mineral')
-
-    def is_is_structure_prototype(self):
-        """
-        Is the 'Structure Prototype' checkbox enabled?
-        """
-        return self._is_checkbox_enabled('is_structure_prototype')
-
-    def export_CIF(self, base_filename='ICSD_Coll_Code'):
-        """
-        Use By.ID to locate text field for base filename for CIFs
-        ('fileNameForExportToCif'), POST `base_filename` to it, and then use
-        By.ID to locate 'Export to CIF File' button ('aExportCifFile'), and
-        click it.
-
-        Keyword arguments:
-            base_filename: (default: 'ICSD_Coll_Code')
-                           String to be prepended to the CIF file. The final
-                           name is of the form
-                           "[base_filename]_[ICSD Collection Code].cif", e.g.,
-                           "ICSD_Coll_Code_18975.cif"
-        """
-        filename_element = self.driver.find_element_by_id('fileNameForExportToCif')
-        filename_element.clear()
-        filename_element.send_keys(base_filename)
-        self.driver.find_element_by_id('aExportCifFile').click()
+    def parse_property(self, tag=None):
+        """
+        Parse the value in the field specified by `tag`.
+
+        For tags "remarks", "calculation_method", "keywords", "comments", and
+        "warnings", a list of field values are returned. For all other tags, a
+        single string (empty string if property not available) is returned.
+
+        """
+        if not tag:
+            return
+        if tag in ['remarks', 'calculation_method', 'keywords', 'comments',
+                   'warnings']:
+            return self.parse_property_list(tag)
+
+        search_text = ICSD_PARSE_TAGS[tag]
+        xpath = "//td[text()[contains(., '{}')]]/../td".format(search_text)
+        td_elements = self.driver.find_elements_by_xpath(xpath)
+        if not td_elements:
+            return ""
+        for i in reversed(range(len(td_elements))):
+            if 'outputlabel' not in td_elements[i].get_attribute('class'):
+                continue
+            if td_elements[i].text == search_text:
+                return td_elements[i+1].text.strip()
+
+    def parse_property_list(self, tag=None):
+        """
+        Parse the value in the fields specified by `tag` and return as a list.
+        """
+        if not tag:
+            return
+        values = set()
+        search_text = ICSD_PARSE_TAGS[tag]
+        xpath = "//td[text()[contains(., '{}')]]/../td".format(search_text)
+        td_elements = self.driver.find_elements_by_xpath(xpath)
+        if td_elements:
+            for i in range(len(td_elements)):
+                if td_elements[i].text == search_text:
+                    value = td_elements[i+1].text.strip()
+                    if not value:
+                        continue
+                    values.add(value)
+        return list(values)
+
+    def export_cif(self):
+        """
+        Use By.ID to locate the 'Export Cif' button and click it. The file is
+        downloaded as "ICSD_CollCode[icsd_id].cif" into the download directory
+        specified for the webdriver.
+
+        """
+        self.driver.find_element_by_id(
+            'display_form:btnEntryDownloadCif').click()
 
     def save_screenshot(self, size=None, fname='ICSD.png'):
         """
@@ -962,8 +515,12 @@ class Queryer(object):
         """
         Post the query to form, parse data for all the entries. (wrapper)
         """
-        ##self.select_structure_source()
-        self.post_query_to_form()
-        self._click_select_all()
-        self._click_show_detailed_view()
-        return self.parse_entries()
+        try:
+            self.select_structure_sources()
+            self.post_query_to_form()
+            self._click_select_all()
+            self._click_show_detailed_view()
+            self.parse_entries()
+        finally:
+            time.sleep(1.0)
+            self.quit()

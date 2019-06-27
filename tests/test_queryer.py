@@ -1,8 +1,9 @@
 import queryer
 
 query = {
-    'composition': 'Al O F',
-    'number_of_elements': '3'
+    'composition': 'Yb F',
+    'number_of_elements': '2'
     }
-queryer = queryer.Queryer(query=query, structure_source='theory')
-queryer.perform_icsd_query()
+q = queryer.Queryer(query=query, structure_sources=['e', 't'])
+#q = queryer.Queryer(query=query)
+q.perform_icsd_query()
