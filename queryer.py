@@ -239,7 +239,6 @@ class Queryer(object):
             sys.stdout.flush()
 
         self._run_query()
-        self._check_list_view()
 
     def _run_query(self):
         """
@@ -254,22 +253,21 @@ class Queryer(object):
         Parse element text to get number of hits for the current query
         (last item when text is split), assign to `self.hits`.
         """
-        try:
-            title = self.driver.find_element_by_class_name('ui-panel-title')
-        except:
-            self.quit()
-            error_message = 'No hits/too many hits. Modify your query.'
+        time.sleep(2.0)
+        pop = self.driver.find_element_by_id('content_form:messages_container')
+        if 'No results found' in pop.text:
+            return
+
+        titles = self.driver.find_elements_by_class_name('ui-panel-title')
+        list_view_loaded = any(['List View' in t.text for t in titles])
+        if not list_view_loaded:
+            error_message = 'Failed to load "List View" of results'
             raise QueryerError(error_message)
         else:
-            if 'List View' not in title.text:
-                self.quit()
-                error_message = 'Failed to load "List View" of results'
-                raise QueryerError(error_message)
-            else:
-                self.hits = int(title.text.split()[-1])
-                sys.stdout.write('The query yielded ')
-                sys.stdout.write('{} hits.\n'.format(self.hits))
-                sys.stdout.flush()
+            for title in titles:
+                if 'List View' in title.text:
+                    self.hits = int(title.text.split()[-1])
+                    break
 
     def _click_select_all(self):
         """
@@ -299,7 +297,6 @@ class Queryer(object):
         try:
             title = self.driver.find_element_by_class_name('ui-panel-title')
         except:
-            self.quit()
             error_message = 'Failed to load "Detailed View" of results'
             raise QueryerError(error_message)
 
@@ -340,7 +337,19 @@ class Queryer(object):
         Close the browser session and quit.
 
         Return: (list) A list of ICSD Collection Codes of entries parsed
+
         """
+        entries_parsed = []
+
+        self._check_list_view()
+        print('The query yielded {} hits.'.format(self.hits))
+        sys.stdout.flush()
+        if self.hits == 0:
+            return entries_parsed
+
+        self._click_select_all()
+        self._click_show_detailed_view()
+
         if self._get_number_of_entries_loaded() != self.hits:
             self.quit()
             error_message = '# Hits != # Entries in Detailed View'
@@ -388,6 +397,7 @@ class Queryer(object):
             sys.stdout.write('Data exported into ')
             sys.stdout.write('folder "{}"\n'.format(coll_code))
             sys.stdout.flush()
+            entries_parsed.append(coll_code)
 
             if i < (self.hits - 1):
                 self._go_to_next_entry()
@@ -396,7 +406,7 @@ class Queryer(object):
         sys.stdout.flush()
         self.quit()
         sys.stdout.write(' done.\n')
-        return
+        return entries_parsed
 
     def _go_to_next_entry(self):
         """
@@ -518,8 +528,6 @@ class Queryer(object):
         try:
             self.select_structure_sources()
             self.post_query_to_form()
-            self._click_select_all()
-            self._click_show_detailed_view()
             self.parse_entries()
         finally:
             time.sleep(1.0)
