@@ -5,7 +5,6 @@ import json
 import time
 
 from selenium import webdriver
-import pyvirtualdisplay as pyvd
 
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
@@ -72,9 +71,8 @@ class Queryer(object):
         Attributes:
             url: URL of the search page
             query: query to be posted to the webform
-            save_screenshot: whether the ICSD page should be saved as a screensho
+            save_screenshot: whether to take a screenshot of the ICSD page
             structure_sources: search for experimental/theoretical/all structures
-            virt_display: Display object from pyvirtualdisplay
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
@@ -91,8 +89,6 @@ class Queryer(object):
 
         self._structure_sources = None
         self.structure_sources = structure_sources
-
-        self.virt_diplay = None
 
         self.driver = self._initialize_driver()
         self.driver.get(self.url)
@@ -150,8 +146,6 @@ class Queryer(object):
                 self._structure_sources.append(s.lower()[0])
 
     def _initialize_driver(self):
-        self.virt_display = pyvd.Display(visible=0, size=(1600, 900))
-        self.virt_display.start()
         browser_data_dir = os.path.join(os.getcwd(), 'browser_data')
         if os.path.exists(browser_data_dir):
             shutil.rmtree(browser_data_dir, ignore_errors=True)
@@ -519,7 +513,6 @@ class Queryer(object):
     def quit(self):
         self.driver.stop_client()
         self.driver.quit()
-        self.virt_display.stop()
 
     def perform_icsd_query(self):
         """
