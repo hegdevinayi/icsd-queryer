@@ -48,12 +48,20 @@ class Queryer(object):
             userid:
                 User ID of the account used to login to the web page.
 
-                Default: None; assume IP-based authentication.
+                Default: None.
+                    If `use_login` is True, and no user ID is specified, an
+                    environment variable `ICSD_USERID` is looked for.
+                    If `use_login` is False, IP-based authentication is
+                    assumed.
 
             password:
                 Password of the user account used to login to the web page.
 
-                Default: None; assume IP-based authentication.
+                Default: None.
+                    If `use_login` is True, and no password is specified, an
+                    environment variable `ICSD_PASSWORD` is looked for.
+                    If `use_login` is False, IP-based authentication is
+                    assumed.
 
             query:
                 The query to be posted to the webform -- a dictionary of field
@@ -108,10 +116,12 @@ class Queryer(object):
         self.use_login = use_login
 
         self._userid = None
-        self.userid = userid
+        if self.use_login:
+            self.userid = userid
 
         self._password = None
-        self.password = password
+        if self.use_login:
+            self.password = password
 
         self._query = None
         self.query = query
