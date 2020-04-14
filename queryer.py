@@ -1,12 +1,18 @@
-import sys
 import os
 import shutil
 import json
 import time
+from logging import getLogger
+from logging import StreamHandler
+from logging import FileHandler
+from logging import NullHandler
 
 from selenium import webdriver
 
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
+
+
+logger = getLogger(__name__)
 
 
 class QueryerError(Exception):
@@ -26,7 +32,8 @@ class Queryer(object):
                  password=None,
                  query=None,
                  save_screenshot=None,
-                 structure_sources=None):
+                 structure_sources=None,
+                 log_stream=None):
         """
         Initialize the webdriver and load the URL.
         (Also, check if the "Basic Search" page has loaded successfully.)
@@ -99,11 +106,20 @@ class Queryer(object):
 
                 Default: ["expt"]
 
+            log_stream:
+                String with the path to a file where logs should be written,
+                or alternatively "console" (case-insensitive) to write logs to
+                the console (standard output/error stream).
+                An additional option of "nolog" can be specified to avoid all
+                logging.
+
+                Default: "console".
+
         Attributes:
             url: URL of the search page
             query: query to be posted to the webform
             save_screenshot: whether to take a screenshot of the ICSD page
-            structure_sources: search for experimental/theoretical/all structures
+            structure_sources: which structure sources to search for
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
@@ -129,6 +145,10 @@ class Queryer(object):
 
         self._structure_sources = None
         self.structure_sources = structure_sources
+
+        self._log_stream = None
+        self.log_stream = log_stream
+        self.add_log_handlers()
 
         self.driver = self._initialize_driver()
         self.load_web_search()
@@ -217,16 +237,35 @@ class Queryer(object):
             for s in structure_sources:
                 self._structure_sources.append(s.lower()[0])
 
+    @property
+    def log_stream(self):
+        return self._log_stream
+
+    @log_stream.setter
+    def log_stream(self, log_stream):
+        if log_stream is None:
+            log_stream = "console"
+        self._log_stream = log_stream
+
+    def add_log_handlers(self):
+        if self._log_stream.lower() == 'nolog':
+            logger.addHandler(NullHandler)
+        if self._log_stream.lower() == 'console' or self._log_stream is None:
+            std_stream = StreamHandler()
+            logger.addHandler(std_stream)
+        else:
+            file_stream = FileHandler(self._log_stream)
+            logger.addHandler(file_stream)
+
     def _initialize_driver(self):
         browser_data_dir = os.path.join(os.getcwd(), 'browser_data')
         if os.path.exists(browser_data_dir):
             shutil.rmtree(browser_data_dir, ignore_errors=True)
         self.download_dir = os.path.abspath(os.path.join(browser_data_dir,
                                                          'driver_downloads'))
-        sys.stdout.write('Starting a ChromeDriver ')
-        sys.stdout.write('with the default download directory:\n')
-        sys.stdout.write(' "{}"'.format(self.download_dir))
-        sys.stdout.write('...\n')
+        logger.info('Starting a ChromeDriver ')
+        logger.info('with the default download directory:')
+        logger.info(' "{}"'.format(self.download_dir))
         _options = webdriver.ChromeOptions()
         # using to --no-startup-window to run Chrome in the background throws a
         # WebDriver.Exception with "Message: unknown error: Chrome failed to
@@ -291,8 +330,8 @@ class Queryer(object):
         a menu on the left of the main page) based on the specified strucure
         sources.
 
-        By default, the "Experim. inorganic structures" checkbox is selected, so
-        click appropriately.
+        By default, the "Experim. inorganic structures" checkbox is selected,
+        so click appropriately.
 
         """
         labels = {
@@ -327,12 +366,12 @@ class Queryer(object):
             error_message = 'Empty query'
             raise QueryerError(error_message)
 
-        sys.stdout.write('Querying the ICSD for\n')
+        logger.info('Querying the ICSD for')
         for k, v in self.query.items():
             element_id = ICSD_QUERY_TAGS[k]
             self.driver.find_element_by_id(element_id).send_keys(v)
-            sys.stdout.write('\t{} = "{}"\n'.format(k, v))
-            sys.stdout.flush()
+            logger.info('\t{} = "{}"'.format(k, v))
+        logger.flush()
 
         self._run_query()
 
@@ -438,8 +477,8 @@ class Queryer(object):
         entries_parsed = []
 
         self._check_list_view()
-        print('The query yielded {} hits.'.format(self.hits))
-        sys.stdout.flush()
+        logger.info('The query yielded {} hits.'.format(self.hits))
+        logger.flush()
         if self.hits == 0:
             return entries_parsed
 
@@ -451,8 +490,8 @@ class Queryer(object):
             error_message = '# Hits != # Entries in Detailed View'
             raise QueryerError(error_message)
 
-        sys.stdout.write('Parsing all the entries... \n')
-        sys.stdout.flush()
+        logger.info('Parsing all the entries...')
+        logger.flush()
         for i in range(self.hits):
             # get entry data
             entry_data = self.parse_entry()
@@ -489,19 +528,18 @@ class Queryer(object):
             cif_dest_loc = os.path.join(coll_code, '{}.cif'.format(coll_code))
             shutil.move(cif_source_loc, cif_dest_loc)
 
-            sys.stdout.write('[{}/{}]: '.format(i+1, self.hits))
-            sys.stdout.write('Data exported into ')
-            sys.stdout.write('folder "{}"\n'.format(coll_code))
-            sys.stdout.flush()
+            logger.info('[{}/{}]: '.format(i+1, self.hits))
+            logger.info('Data exported into folder:')
+            logger.info('"{}"'.format(coll_code))
+            logger.flush()
             entries_parsed.append(coll_code)
 
             if i < (self.hits - 1):
                 self._go_to_next_entry()
 
-        sys.stdout.write('Closing the browser session and exiting...')
-        sys.stdout.flush()
+        logger.info('Closing the browser session and exiting.')
+        logger.flush()
         self.quit()
-        sys.stdout.write(' done.\n')
         return entries_parsed
 
     def _go_to_next_entry(self):

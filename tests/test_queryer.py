@@ -1,4 +1,9 @@
+import logging
 import queryer
+
+
+logging.root.setLevel(logging.DEBUG)
+
 
 query = {
     'composition': 'Ni:1:1',
