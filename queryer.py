@@ -32,6 +32,7 @@ class Queryer(object):
                  password=None,
                  query=None,
                  save_screenshot=None,
+                 download_cifs=None,
                  structure_sources=None,
                  log_stream=None):
         """
@@ -50,12 +51,12 @@ class Queryer(object):
             use_login:
                 Boolean specifying whether user login needs to be used or not.
 
-                Default: False.
+                Default: False
 
             userid:
                 User ID of the account used to login to the web page.
 
-                Default: None.
+                Default: None
                     - If `use_login` is True, and no user ID is specified, an
                     environment variable `ICSD_USERID` is looked for.
                     - If `use_login` is False, IP-based authentication is
@@ -64,7 +65,7 @@ class Queryer(object):
             password:
                 Password of the user account used to login to the web page.
 
-                Default: None.
+                Default: None
                     - If `use_login` is True, and no password is specified, an
                     environment variable `ICSD_PASSWORD` is looked for.
                     - If `use_login` is False, IP-based authentication is
@@ -87,7 +88,13 @@ class Queryer(object):
             save_screenshot:
                 Boolean specifying whether a screenshot of the ICSD web page
                 should be saved locally?
-                (Default: False)
+
+                Default: False
+
+            download_cifs:
+                Boolean specifying whether to download CIFs from the query.
+
+                Default: False
 
             structure_sources:
                 List of strings specifying whether the search should be limited
@@ -113,13 +120,13 @@ class Queryer(object):
                 An additional option of "nolog" can be specified to avoid all
                 logging.
 
-                Default: "console".
+                Default: "console"
 
         Attributes:
             url: URL of the search page
             query: query to be posted to the webform
             save_screenshot: whether to take a screenshot of the ICSD page
-            structure_sources: which structure sources to search for
+            structure_sources: source of structure to query the ICSD for
             browser_data_dir: directory for browser user profile, related data
             driver: instance of Selenium WebDriver running PhantomJS
             hits: number of search hits for the query
@@ -145,6 +152,9 @@ class Queryer(object):
 
         self._structure_sources = None
         self.structure_sources = structure_sources
+
+        self._download_cifs = None
+        self.download_cifs = download_cifs
 
         self._log_stream = None
         self.log_stream = log_stream
@@ -223,6 +233,19 @@ class Queryer(object):
             self._save_screenshot = save_screenshot.lower()[0] == 't'
         else:
             self._save_screenshot = save_screenshot
+
+    @property
+    def download_cifs(self):
+        return self._download_cifs
+
+    @download_cifs.setter
+    def download_cifs(self, download_cifs):
+        if download_cifs is None:
+            self._download_cifs = False
+        elif isinstance(download_cifs, str):
+            self._download_cifs = download_cifs.lower()[0] == 't'
+        else:
+            self._download_cifs = download_cifs
 
     @property
     def structure_sources(self):
