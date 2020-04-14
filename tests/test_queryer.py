@@ -1,9 +1,10 @@
 import queryer
 
 query = {
-    'composition': 'Yb F',
-    'number_of_elements': '2'
+    'composition': 'Ni:1:1',
+    'number_of_elements': '1'
     }
-q = queryer.Queryer(query=query, structure_sources=['e', 't'])
-#q = queryer.Queryer(query=query)
+q = queryer.Queryer(use_login=True,
+                    query=query,
+                    structure_sources=['e', 't'])
 q.perform_icsd_query()

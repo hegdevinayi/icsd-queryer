@@ -21,6 +21,9 @@ class Queryer(object):
 
     def __init__(self,
                  url=None,
+                 use_login=None,
+                 userid=None,
+                 password=None,
                  query=None,
                  save_screenshot=None,
                  structure_sources=None):
@@ -33,15 +36,42 @@ class Queryer(object):
 
         Keyword arguments:
             url:
-                URL of the search page
+                URL of the ICSD web search page.
+
+                Default: https://icsd.fiz-karlsruhe.de/search/basic.xhtml.
+
+            use_login:
+                Boolean specifying whether user login needs to be used or not.
+
+                Default: False.
+
+            userid:
+                User ID of the account used to login to the web page.
+
+                Default: None.
+                    - If `use_login` is True, and no user ID is specified, an
+                    environment variable `ICSD_USERID` is looked for.
+                    - If `use_login` is False, IP-based authentication is
+                    assumed.
+
+            password:
+                Password of the user account used to login to the web page.
+
+                Default: None.
+                    - If `use_login` is True, and no password is specified, an
+                    environment variable `ICSD_PASSWORD` is looked for.
+                    - If `use_login` is False, IP-based authentication is
+                    assumed.
 
             query:
                 The query to be posted to the webform -- a dictionary of field
                 names as keys and what to fill in them as the corresponding
-                values. Currently supported field names:
-                1. composition
-                2. number_of_elements
-                3. icsd_collection_code
+                values.
+
+                Currently supported field names:
+                1. "composition"
+                2. "number_of_elements"
+                3. "icsd_collection_code"
                 E.g., {'composition': 'Ni:2:2 Ti:1:1', 'number_of_elements': 2}
 
                 **[Note]**: field names must *exactly* match the ones
@@ -53,20 +83,21 @@ class Queryer(object):
                 (Default: False)
 
             structure_sources:
-                List of Strings specifying whether the search should be limited
+                List of strings specifying whether the search should be limited
                 to one of the below or a combination thereof:
                     1. "expt" = Experimental inorganic structures
                     2. "mofs" = Experimental metal-organic structures
                     3. "theo" = Theoretical structures
                 These options correspond to the checkboxes available on the
-                "Content Selection" panel on the left in the ICSD Web Search.
+                "Content Selection" panel on the left in the ICSD Web Search
+                page.
 
                 For example, ["expt"] queries for only experimental inorganic
                 structures, ["mofs"] queries for only experimental
                 metal-organic structures, ["expt", "theo"] queries for
                 experimental inorganic AND theoretical structures, and so on.
 
-                (Default: ["expt"])
+                Default: ["expt"]
 
         Attributes:
             url: URL of the search page
@@ -81,6 +112,15 @@ class Queryer(object):
         self._url = None
         self.url = url
 
+        self._use_login = None
+        self.use_login = use_login
+
+        self._userid = None
+        self.userid = userid
+
+        self._password = None
+        self.password = password
+
         self._query = None
         self.query = query
 
@@ -91,10 +131,7 @@ class Queryer(object):
         self.structure_sources = structure_sources
 
         self.driver = self._initialize_driver()
-        self.driver.get(self.url)
-        self.driver.implicitly_wait(1.0)
-
-        self._check_basic_search()
+        self.load_web_search()
 
         self.hits = 0
 
@@ -107,6 +144,41 @@ class Queryer(object):
         if not url:
             url = 'https://icsd.fiz-karlsruhe.de/search/basic.xhtml'
         self._url = url
+
+    @property
+    def use_login(self):
+        return self._use_login
+
+    @use_login.setter
+    def use_login(self, use_login):
+        if use_login is None:
+            self._use_login = False
+        elif isinstance(use_login, str):
+            self._use_login = use_login.lower()[0] == 't'
+        else:
+            self._use_login = use_login
+
+    @property
+    def userid(self):
+        return self._userid
+
+    @userid.setter
+    def userid(self, userid):
+        if userid is not None:
+            self._userid = userid
+        elif os.environ.get('ICSD_USERID') is not None:
+            self._userid = os.environ.get('ICSD_USERID')
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, password):
+        if password is not None:
+            self._password = password
+        elif os.environ.get('ICSD_PASSWORD') is not None:
+            self._password = os.environ.get('ICSD_PASSWORD')
 
     @property
     def query(self):
@@ -125,10 +197,10 @@ class Queryer(object):
 
     @save_screenshot.setter
     def save_screenshot(self, save_screenshot):
-        if not save_screenshot:
+        if save_screenshot is None:
             self._save_screenshot = False
         elif isinstance(save_screenshot, str):
-            self._save_screenshot = save_screenshot.lower() == 't'
+            self._save_screenshot = save_screenshot.lower()[0] == 't'
         else:
             self._save_screenshot = save_screenshot
 
@@ -164,6 +236,36 @@ class Queryer(object):
         prefs = {'download.default_directory': self.download_dir}
         _options.add_experimental_option("prefs", prefs)
         return webdriver.Chrome(chrome_options=_options)
+
+    def load_web_search(self):
+        self.load_url()
+        if self._use_login:
+            self.login_personal()
+        self._check_basic_search()
+
+    def load_url(self):
+        """
+        Loads the specified URL and checks if the "Basic Search & Retrieve"
+        interface has been successfully loaded.
+        """
+        self.driver.get(self.url)
+        self.driver.implicitly_wait(1.0)
+
+    def login_personal(self):
+        if self.userid is None:
+            return
+        # enter the user id
+        userid_field_id = 'content_form:loginId'
+        userid_field = self.driver.find_element_by_id(userid_field_id)
+        userid_field.send_keys(self.userid)
+        # enter the password
+        passwd_field_id = 'content_form:password'
+        passwd_field = self.driver.find_element_by_id(passwd_field_id)
+        passwd_field.send_keys(self.password)
+        # click the login button
+        login_button_id = 'content_form:loginButtonPersonal'
+        login_button = self.driver.find_element_by_id(login_button_id)
+        login_button.click()
 
     def _check_basic_search(self):
         """
