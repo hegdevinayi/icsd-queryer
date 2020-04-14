@@ -43,24 +43,24 @@ class Queryer(object):
             use_login:
                 Boolean specifying whether user login needs to be used or not.
 
-                Default: True.
+                Default: False.
 
             userid:
                 User ID of the account used to login to the web page.
 
                 Default: None.
-                    If `use_login` is True, and no user ID is specified, an
+                    - If `use_login` is True, and no user ID is specified, an
                     environment variable `ICSD_USERID` is looked for.
-                    If `use_login` is False, IP-based authentication is
+                    - If `use_login` is False, IP-based authentication is
                     assumed.
 
             password:
                 Password of the user account used to login to the web page.
 
                 Default: None.
-                    If `use_login` is True, and no password is specified, an
+                    - If `use_login` is True, and no password is specified, an
                     environment variable `ICSD_PASSWORD` is looked for.
-                    If `use_login` is False, IP-based authentication is
+                    - If `use_login` is False, IP-based authentication is
                     assumed.
 
             query:
@@ -116,12 +116,10 @@ class Queryer(object):
         self.use_login = use_login
 
         self._userid = None
-        if self.use_login:
-            self.userid = userid
+        self.userid = userid
 
         self._password = None
-        if self.use_login:
-            self.password = password
+        self.password = password
 
         self._query = None
         self.query = query
@@ -149,7 +147,7 @@ class Queryer(object):
 
     @property
     def use_login(self):
-        self._use_login
+        return self._use_login
 
     @use_login.setter
     def use_login(self, use_login):
@@ -241,7 +239,8 @@ class Queryer(object):
 
     def load_web_search(self):
         self.load_url()
-        self.login_personal()
+        if self._use_login:
+            self.login_personal()
         self._check_basic_search()
 
     def load_url(self):
