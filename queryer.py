@@ -199,10 +199,10 @@ class Queryer(object):
 
     @save_screenshot.setter
     def save_screenshot(self, save_screenshot):
-        if not save_screenshot:
+        if save_screenshot is None:
             self._save_screenshot = False
         elif isinstance(save_screenshot, str):
-            self._save_screenshot = save_screenshot.lower() == 't'
+            self._save_screenshot = save_screenshot.lower()[0] == 't'
         else:
             self._save_screenshot = save_screenshot
 
