@@ -393,7 +393,9 @@ class Queryer(object):
         logger.info('Querying the ICSD for')
         for k, v in self.query.items():
             element_id = ICSD_QUERY_TAGS[k]
-            self.driver.find_element_by_id(element_id).send_keys(v)
+            element = self.driver.find_element_by_id(element_id)
+            element.clear()
+            element.send_keys(v)
             logger.info('\t{} = "{}"'.format(k, v))
 
         self._run_query()
