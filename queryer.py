@@ -8,6 +8,7 @@ from logging import FileHandler
 from logging import NullHandler
 
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
@@ -394,7 +395,6 @@ class Queryer(object):
             element_id = ICSD_QUERY_TAGS[k]
             self.driver.find_element_by_id(element_id).send_keys(v)
             logger.info('\t{} = "{}"'.format(k, v))
-        logger.flush()
 
         self._run_query()
 
@@ -406,15 +406,20 @@ class Queryer(object):
 
     def _check_list_view(self):
         """
-        Use By.CLASS_NAME to locate the first 'title' element, raise Error if
-        'List View' is not in the element text.
+        Verify that the "List View" has been successfully loaded, raise an
+        error otherwise.
         Parse element text to get number of hits for the current query
         (last item when text is split), assign to `self.hits`.
         """
         time.sleep(2.0)
-        pop = self.driver.find_element_by_id('content_form:messages_container')
-        if 'No results found' in pop.text:
-            return
+        try:
+            popup = self.driver.find_element_by_id(
+                'content_form:messages_container')
+        except NoSuchElementException:
+            pass
+        else:
+            if 'No results found' in popup.text:
+                return
 
         titles = self.driver.find_elements_by_class_name('ui-panel-title')
         list_view_loaded = any(['List View' in t.text for t in titles])
@@ -501,7 +506,6 @@ class Queryer(object):
 
         self._check_list_view()
         logger.info('The query yielded {} hits.'.format(self.hits))
-        logger.flush()
         if self.hits == 0:
             return entries_parsed
 
@@ -514,7 +518,6 @@ class Queryer(object):
             raise QueryerError(error_message)
 
         logger.info('Parsing all the entries...')
-        logger.flush()
         for i in range(self.hits):
             # get entry data
             entry_data = self.parse_entry()
@@ -536,32 +539,32 @@ class Queryer(object):
                 self.save_screenshot(fname=screenshot_file)
 
             # get the CIF file
-            self.export_cif()
-            # uncomment the next few lines for automatic copying of CIF files
-            # into the correct folders
-            # wait for the file download to be completed
-            cif_name = 'ICSD_CollCode{}.cif'.format(coll_code)
-            cif_source_loc = os.path.join(self.download_dir, cif_name)
-            while True:
-                if os.path.exists(cif_source_loc):
-                    break
-                else:
-                    time.sleep(1.0)
-            # move it into the directory of the current entry
-            cif_dest_loc = os.path.join(coll_code, '{}.cif'.format(coll_code))
-            shutil.move(cif_source_loc, cif_dest_loc)
+            if self.download_cifs:
+                self.export_cif()
+                # uncomment the next few lines for automatic copying of CIF
+                # files into the correct folders
+                # wait for the file download to be completed
+                cif_name = 'ICSD_CollCode{}.cif'.format(coll_code)
+                cif_source_loc = os.path.join(self.download_dir, cif_name)
+                while True:
+                    if os.path.exists(cif_source_loc):
+                        break
+                    else:
+                        time.sleep(1.0)
+                # move it into the directory of the current entry
+                cif_dest_loc = os.path.join(coll_code,
+                                            '{}.cif'.format(coll_code))
+                shutil.move(cif_source_loc, cif_dest_loc)
 
             logger.info('[{}/{}]: '.format(i+1, self.hits))
             logger.info('Data exported into folder:')
             logger.info('"{}"'.format(coll_code))
-            logger.flush()
             entries_parsed.append(coll_code)
 
             if i < (self.hits - 1):
                 self._go_to_next_entry()
 
         logger.info('Closing the browser session and exiting.')
-        logger.flush()
         self.quit()
         return entries_parsed
 
@@ -576,6 +579,9 @@ class Queryer(object):
         """
         Parse all `tags.ICSD_PARSE_TAGS` + the ICSD Collection Code for the
         current entry, and construct a dictionary `parsed_data` with tag:value.
+
+        #TODO (hegdevinayi@gmail.com): parse the table with atomic coordinates
+        and site occupancy.
 
         Return: (dict) `parsed_data` with [tag]:[parsed value]
         """
