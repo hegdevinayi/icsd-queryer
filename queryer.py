@@ -9,11 +9,24 @@ from logging import NullHandler
 
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions
 
 from tags import ICSD_QUERY_TAGS, ICSD_PARSE_TAGS
 
 
 logger = getLogger(__name__)
+
+
+def _find_element_by_id(driver, elem_id, wait=10):
+    element = WebDriverWait(driver, wait).until(
+        expected_conditions.presence_of_element_located(
+            (By.ID, elem_id)))
+    if not element:
+        msg = 'Failed to find element "{}" in "{}"s'.format(elem_id, wait)
+        raise QueryerError(msg)
+    return element
 
 
 class QueryerError(Exception):
@@ -294,7 +307,8 @@ class Queryer(object):
         # using to --no-startup-window to run Chrome in the background throws a
         # WebDriver.Exception with "Message: unknown error: Chrome failed to
         # start: exited normally"
-        ##_options.add_argument('--no-startup-window ')
+        # _options.add_argument('--no-startup-window ')
+        # TODO (hegdevinayi@gmail.com): test newer versions of drivers
         _options.add_argument('user-data-dir={}'.format(browser_data_dir))
         prefs = {'download.default_directory': self.download_dir}
         _options.add_experimental_option("prefs", prefs)
@@ -312,22 +326,21 @@ class Queryer(object):
         interface has been successfully loaded.
         """
         self.driver.get(self.url)
-        self.driver.implicitly_wait(1.0)
 
     def login_personal(self):
         if self.userid is None:
             return
         # enter the user id
         userid_field_id = 'content_form:loginId'
-        userid_field = self.driver.find_element_by_id(userid_field_id)
+        userid_field = _find_element_by_id(self.driver, userid_field_id)
         userid_field.send_keys(self.userid)
         # enter the password
         passwd_field_id = 'content_form:password'
-        passwd_field = self.driver.find_element_by_id(passwd_field_id)
+        passwd_field = _find_element_by_id(self.driver, passwd_field_id)
         passwd_field.send_keys(self.password)
         # click the login button
         login_button_id = 'content_form:loginButtonPersonal'
-        login_button = self.driver.find_element_by_id(login_button_id)
+        login_button = _find_element_by_id(self.driver, login_button_id)
         login_button.click()
 
     def _check_basic_search(self):
@@ -372,11 +385,9 @@ class Queryer(object):
             if label in self.structure_sources:
                 if not checkbox.is_selected():
                     clickable_elem.click()
-                    time.sleep(5.0)
             elif label not in self.structure_sources:
                 if checkbox.is_selected():
                     clickable_elem.click()
-                    time.sleep(5.0)
 
     def post_query_to_form(self):
         """
@@ -413,7 +424,6 @@ class Queryer(object):
         Parse element text to get number of hits for the current query
         (last item when text is split), assign to `self.hits`.
         """
-        time.sleep(2.0)
         try:
             popup = self.driver.find_element_by_id(
                 'content_form:messages_container')
@@ -438,7 +448,6 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Select All' button, and click it.
         """
-        time.sleep(1.0)
         self.driver.find_element_by_id(
             'display_form:listViewTable:uiSelectAllRows').click()
 
@@ -446,7 +455,6 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Show Detailed View' button, and click it.
         """
-        time.sleep(1.0)
         self.driver.find_element_by_id(
             'display_form:btnEntryViewDetailed').click()
         self._check_detailed_view()
@@ -464,7 +472,6 @@ class Queryer(object):
         except:
             error_message = 'Failed to load "Detailed View" of results'
             raise QueryerError(error_message)
-
         else:
             if 'Detailed View' not in title.text:
                 self.quit()
@@ -475,7 +482,6 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Expand All' button, and click it.
         """
-        time.sleep(1.0)
         self.driver.find_element_by_id('display_form:expandAllButton').click()
 
     def _get_number_of_entries_loaded(self):
@@ -574,7 +580,6 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Next' button, and click it.
         """
-        time.sleep(1.0)
         self.driver.find_element_by_id('display_form:buttonNext').click()
 
     def parse_entry(self):
@@ -587,7 +592,6 @@ class Queryer(object):
 
         Return: (dict) `parsed_data` with [tag]:[parsed value]
         """
-        time.sleep(1.0)
         parsed_data = {}
         parsed_data['collection_code'] = self.get_collection_code()
         for tag in ICSD_PARSE_TAGS.keys():
@@ -605,11 +609,12 @@ class Queryer(object):
         for title in titles:
             if 'Summary' in title.text:
                 try:
-                    return int(title.text.split()[-1])
+                    coll_code = int(title.text.split()[-1])
                 except:
                     self.quit()
                     error_message = 'Failed to parse the ICSD Collection Code'
                     raise QueryerError(error_message)
+                return coll_code
 
     def parse_property(self, tag=None):
         """
@@ -694,5 +699,4 @@ class Queryer(object):
             self.post_query_to_form()
             self.parse_entries()
         finally:
-            time.sleep(1.0)
             self.quit()

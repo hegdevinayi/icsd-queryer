@@ -6,7 +6,7 @@ logging.root.setLevel(logging.DEBUG)
 
 
 query = {
-    'composition': 'Ni:1:1',
+    'composition': 'Al:1:1',
     'number_of_elements': '1'
     }
 q = queryer.Queryer(use_login=True,
