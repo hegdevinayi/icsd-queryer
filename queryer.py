@@ -326,6 +326,7 @@ class Queryer(object):
         interface has been successfully loaded.
         """
         self.driver.get(self.url)
+        self.driver.implicitly_wait(2.5)
 
     def login_personal(self):
         if self.userid is None:
@@ -385,9 +386,11 @@ class Queryer(object):
             if label in self.structure_sources:
                 if not checkbox.is_selected():
                     clickable_elem.click()
+                    time.sleep(5.0)
             elif label not in self.structure_sources:
                 if checkbox.is_selected():
                     clickable_elem.click()
+                    time.sleep(5.0)
 
     def post_query_to_form(self):
         """
@@ -415,7 +418,9 @@ class Queryer(object):
         """
         Use By.NAME to locate the 'Run Query' button and click it.
         """
-        self.driver.find_element_by_name('content_form:btnRunQuery').click()
+        run_button = self.driver.find_element_by_name(
+            'content_form:btnRunQuery')
+        run_button.click()
 
     def _check_list_view(self):
         """
@@ -424,6 +429,7 @@ class Queryer(object):
         Parse element text to get number of hits for the current query
         (last item when text is split), assign to `self.hits`.
         """
+        time.sleep(5.0)
         try:
             popup = self.driver.find_element_by_id(
                 'content_form:messages_container')
@@ -448,6 +454,7 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Select All' button, and click it.
         """
+        time.sleep(2.5)
         self.driver.find_element_by_id(
             'display_form:listViewTable:uiSelectAllRows').click()
 
@@ -455,6 +462,7 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Show Detailed View' button, and click it.
         """
+        time.sleep(2.5)
         self.driver.find_element_by_id(
             'display_form:btnEntryViewDetailed').click()
         self._check_detailed_view()
@@ -482,6 +490,7 @@ class Queryer(object):
         """
         Use By.ID to locate the 'Expand All' button, and click it.
         """
+        time.sleep(2.5)
         self.driver.find_element_by_id('display_form:expandAllButton').click()
 
     def _get_number_of_entries_loaded(self):
@@ -592,6 +601,7 @@ class Queryer(object):
 
         Return: (dict) `parsed_data` with [tag]:[parsed value]
         """
+        time.sleep(2.5)
         parsed_data = {}
         parsed_data['collection_code'] = self.get_collection_code()
         for tag in ICSD_PARSE_TAGS.keys():
@@ -699,4 +709,5 @@ class Queryer(object):
             self.post_query_to_form()
             self.parse_entries()
         finally:
+            time.sleep(2.5)
             self.quit()
